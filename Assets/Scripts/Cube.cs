@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using Unity.Mathematics;
 using UnityEngine;
 
 public enum BlockType { GRASS, DIRT, STONE, AIR };
@@ -179,19 +180,59 @@ public class Block
     public bool HasSolidNeighbour(int x, int y, int z)
     {
         //If this is ever is Jobified, this will be a memory sink
-        Block[,,] chunks = owner.chunkData;
+        Block[,,] chunks;
 
-        if(chunks.Length != 0)
+        if(x < 0 || x >= MeshComponents.chunkSize ||
+            y < 0 || y >= MeshComponents.chunkSize ||
+            z < 0 || z >= MeshComponents.chunkSize)
         {
-            try {
+            //Block in another chunk
+            float3 neighbourChunkPos = owner.position + new float3((x - (int)position.x) * MeshComponents.chunkSize,
+                                                                     (y - (int)position.y) * MeshComponents.chunkSize,
+                                                                     (z - (int)position.z) * MeshComponents.chunkSize);
+            string nName = MeshComponents.BuildChunkName(neighbourChunkPos);
+            x = ConvertBlockIndexToLocal(x);
+            y = ConvertBlockIndexToLocal(y);
+            z = ConvertBlockIndexToLocal(z);
+
+            Chunk nChunk;
+            if(MeshComponents.chunks.TryGetValue(nName, out nChunk))
+            {
+                chunks = nChunk.chunkData;
+            }
+            else
+            {
+                //Edge of the known world
+                return false;
+            }
+        } else
+        {
+            //Block in this chunk
+            chunks = owner.chunkData;        
+        }
+
+        if (chunks.Length != 0)
+        {
+            try
+            {
                 return chunks[x, y, z].isSolid;
-            } catch(System.IndexOutOfRangeException ex) { }
+            }
+            catch (System.IndexOutOfRangeException ex) { }
             return false;
         }
         else
         {
             return false;
         }
+    }
+
+    private int ConvertBlockIndexToLocal(int i)
+    {
+        if (i == -1)
+            i = MeshComponents.chunkSize - 1;
+        else if (i == MeshComponents.chunkSize)
+            i = 0;
+        return i;
     }
 
     public Mesh CreateCube()
