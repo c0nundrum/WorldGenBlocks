@@ -26,7 +26,10 @@ public class Chunk
                 for (int x = 0; x < MeshComponents.chunkSize; x++)
                 {
                     float3 pos = new float3(x, y, z);
-                    if (UnityEngine.Random.Range(0, 100) < 50)
+                    int worldX = (int)(x + position.x);
+                    int worldY = (int)(y + position.y);
+                    int worldZ = (int)(z + position.z);
+                    if (worldY <= Utils.GenerateHeight(worldX, worldZ))
                         chunkData[x, y, z] = new Block(BlockType.DIRT, pos, this);
                     else
                         chunkData[x, y, z] = new Block(BlockType.AIR, pos, this);

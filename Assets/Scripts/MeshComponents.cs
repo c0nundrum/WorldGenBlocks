@@ -10,8 +10,8 @@ using Unity.Collections;
 public class MeshComponents : MonoBehaviour
 {
     public static MeshComponents instance;
-    public static int columnHeight = 2;
-    public static int chunkSize = 8;
+    public static int columnHeight = 16;
+    public static int chunkSize = 16;
     public static int worldSize = 2;
     public static Dictionary<string, Chunk> chunks;
 
