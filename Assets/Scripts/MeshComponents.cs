@@ -6,13 +6,16 @@ using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
 using Unity.Collections;
+using Unity.Physics;
+using Material = UnityEngine.Material;
 
 public class MeshComponents : MonoBehaviour
 {
     public static MeshComponents instance;
-    public static int columnHeight = 16;
+    public static int columnHeight = 8;
     public static int chunkSize = 16;
     public static int worldSize = 2;
+
     public static Dictionary<string, Chunk> chunks;
 
     public static string BuildChunkName(float3 f)
@@ -39,7 +42,7 @@ public class MeshComponents : MonoBehaviour
     void Start()
     {
         entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
-        archetype = entityManager.CreateArchetype(typeof(RenderMesh), typeof(LocalToWorld), typeof(Translation), typeof(WorldChunk));
+        archetype = entityManager.CreateArchetype(typeof(RenderMesh), typeof(LocalToWorld), typeof(Translation), typeof(Rotation), typeof(WorldChunk), typeof(PhysicsCollider));
 
         chunks = new Dictionary<string, Chunk>();
         this.transform.position = Vector3.zero;

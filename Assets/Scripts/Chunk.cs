@@ -5,6 +5,13 @@ using Unity.Mathematics;
 using Unity.Entities;
 using Unity.Rendering;
 using Unity.Transforms;
+using Unity.Physics;
+using Unity.Collections;
+using Material = UnityEngine.Material;
+using MeshCollider = Unity.Physics.MeshCollider;
+using Collider = Unity.Physics.Collider;
+using BoxCollider = Unity.Physics.BoxCollider;
+using SphereCollider = Unity.Physics.SphereCollider;
 
 public class Chunk
 {
@@ -90,6 +97,31 @@ public class Chunk
 
         Entity entity = entityManager.CreateEntity(archetype);
 
+        NativeArray<float3> verticesArray = new NativeArray<float3>(mesh.vertices.Length, Allocator.Temp);
+        NativeList<int3> trianglesArray = new NativeList<int3>(Allocator.Temp);
+        for (int i = 0; i < mesh.vertices.Length; i++)
+        {
+            //If the speed of this function becomes a concern, this is a better solution, but uses unsafe code:
+            //https://gist.github.com/LotteMakesStuff/c2f9b764b15f74d14c00ceb4214356b4
+            //verticesArray[i] = new float3(mesh.vertices[i].x + pos.x, mesh.vertices[i].y + pos.y, mesh.vertices[i].z + pos.z);
+            verticesArray[i] = mesh.vertices[i];
+
+        }
+
+        for (int i = 0; i < mesh.triangles.Length; i++)
+        {
+            if ((i + 1) % 3 == 0)
+                trianglesArray.Add(new int3(mesh.triangles[i - 2], mesh.triangles[i - 1], mesh.triangles[i]));
+        }
+
+        BlobAssetReference<Collider> sourceCollider = MeshCollider.Create(verticesArray, trianglesArray);
+        //BlobAssetReference<Collider> sourceCollider = ConvexCollider.Create(verticesArray, ConvexHullGenerationParameters.Default);
+        //BlobAssetReference<Collider> sourceCollider = SphereCollider.Create(new SphereGeometry
+        //{
+        //    Center = pos,
+        //    Radius = 10
+        //});
+
         entityManager.SetSharedComponentData(entity, renderMesh);
 
         entityManager.SetComponentData(entity, new Translation
@@ -97,9 +129,19 @@ public class Chunk
             Value = pos
         });
 
+        entityManager.SetComponentData(entity, new Rotation { Value = quaternion.identity });
+
+        //entityManager.SetComponentData(entity, new PerInstanceCullingTag
+        //{        });
+
         entityManager.SetComponentData(entity, new WorldChunk
         {
             position = new int3 ((int)pos.x, (int)pos.y, (int)pos.z)
+        });
+
+        entityManager.SetComponentData(entity, new PhysicsCollider
+        {
+            Value = sourceCollider
         });
 
     }
