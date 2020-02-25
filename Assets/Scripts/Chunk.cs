@@ -19,6 +19,7 @@ public class Chunk
     public Block[,,] chunkData;
     public float3 position;
     public string chunkName;
+    public ChunkStatus status;
 
     private EntityManager entityManager;
     private EntityArchetype archetype;
@@ -50,6 +51,9 @@ public class Chunk
                         chunkData[x, y, z] = new Block(BlockType.DIRT, pos, this);
                     else
                         chunkData[x, y, z] = new Block(BlockType.AIR, pos, this);
+
+                    status = ChunkStatus.DRAW;
+
                 }
 
             }
@@ -136,7 +140,8 @@ public class Chunk
 
         entityManager.SetComponentData(entity, new WorldChunk
         {
-            position = new int3 ((int)pos.x, (int)pos.y, (int)pos.z)
+            position = new int3 ((int)pos.x, (int)pos.y, (int)pos.z),
+            status = ChunkStatus.KEEP
         });
 
         entityManager.SetComponentData(entity, new PhysicsCollider
