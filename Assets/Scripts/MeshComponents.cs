@@ -17,9 +17,7 @@ public class MeshComponents : MonoBehaviour
     public static int columnHeight = 8;
     public static int chunkSize = 16;
     public static int worldSize = 2;
-    public static int radius = 1;
-    public Slider loadingAmount;
-    public Button playButton;
+    public static int radius = 4;
 
     public static Dictionary<string, Chunk> chunks;
 
@@ -35,7 +33,6 @@ public class MeshComponents : MonoBehaviour
     private EntityManager entityManager;
     private Mesh mesh;
     private bool firstbuild = true;
-    private bool building = false;
 
     private const float ATLAS_SIZE = 0.03125f;
     public Block[,,] chunkData;
@@ -49,29 +46,65 @@ public class MeshComponents : MonoBehaviour
     void Start()
     {
         entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
-        archetype = entityManager.CreateArchetype(typeof(RenderMesh), typeof(LocalToWorld), typeof(Translation), typeof(Rotation), typeof(WorldChunk), typeof(PhysicsCollider));
+        //archetype = entityManager.CreateArchetype(typeof(RenderMesh), typeof(LocalToWorld), typeof(Translation), typeof(Rotation), typeof(WorldChunk), typeof(PhysicsCollider));
+        archetype = entityManager.CreateArchetype(typeof(WorldChunk), typeof(LocalToWorld), typeof(RenderMesh));
 
         chunks = new Dictionary<string, Chunk>();
         this.transform.position = Vector3.zero;
-        this.transform.rotation = Quaternion.identity;   
+        this.transform.rotation = Quaternion.identity;
 
+        BuildChunkAt(0, 0, 0);
+        BuildChunkAt(1, 0, 0);
+        BuildChunkAt(2, 0, 0);
+        BuildChunkAt(3, 0, 0);
+        BuildChunkAt(4, 0, 0);
+        StartCamera();
+        //StartBuild();
     }
 
     // Update is called once per frame
     void Update()
     {
-        if (!building && !firstbuild)
-            StartCoroutine(BuildWorld());
+    }
+
+    private void StartCamera()
+    {
+        var world = World.DefaultGameObjectInjectionWorld;
+        var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
+
+        var countSystem = world.GetOrCreateSystem<CameraControlSystem>();
+
+        simulationSystemGroup.AddSystemToUpdateList(countSystem);
+
+        simulationSystemGroup.SortSystemUpdateList();
+
+        ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
+    }
+
+    private void BuildChunkAt(int x, int y, int z)
+    {
+        Vector3 chunkPosition = new Vector3(x * chunkSize, y * chunkSize, z * chunkSize);
+        string n = BuildChunkName(chunkPosition);
+        Chunk c;
+        if(!chunks.TryGetValue(n, out c))
+        {
+            c = new Chunk(chunkPosition, textureAtlas, entityManager, archetype);
+            chunks.Add(c.chunkName, c);
+            c.DrawChunk();
+        }
+
+        //foreach (KeyValuePair<string, Chunk> chunk in chunks)
+        //{
+        //    chunk.Value.DrawChunk();
+        //}
     }
 
     private IEnumerator BuildWorld()
     {
-        building = true;
         int posx = (int)math.floor(mainCamera.transform.position.x / chunkSize);
         int posz = (int)math.floor(mainCamera.transform.position.z / chunkSize);
 
         float totalChunks = (math.pow(radius * 2 + 1, 2) * columnHeight) * 2;
-        int processCount = 0;
 
         for (int z = -radius; z <= radius; z++)
             for (int x = -radius; x <= radius; x++)
@@ -91,11 +124,6 @@ public class MeshComponents : MonoBehaviour
                         chunks.Add(c.chunkName, c);
                     }
 
-                    if (firstbuild)
-                    {
-                        processCount++;
-                        loadingAmount.value = processCount / totalChunks * 100;
-                    }
                     yield return null;
                 }
 
@@ -110,11 +138,6 @@ public class MeshComponents : MonoBehaviour
             //Delete old chunks here
 
             c.Value.status = ChunkStatus.DONE;
-            if (firstbuild)
-            {
-                processCount++;
-                loadingAmount.value = processCount / totalChunks * 100;
-            }
             yield return null;
         }
 
@@ -131,12 +154,9 @@ public class MeshComponents : MonoBehaviour
 
             ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
 
-            loadingAmount.gameObject.SetActive(false);
-            playButton.gameObject.SetActive(false);
             firstbuild = false;
         }
 
-        building = false;
     }
 
     public void StartBuild()

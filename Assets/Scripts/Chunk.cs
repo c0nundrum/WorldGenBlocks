@@ -88,7 +88,51 @@ public class Chunk
         //since our cubes are created on the correct spot already, we dont need a matrix, and so far, no light data
         chunkMesh.CombineMeshes(array, true, false, false);
 
-        RenderMesh(chunkMesh, this.cubeMaterial, this.position);
+        Entity entity = entityManager.CreateEntity(archetype);
+
+        RenderMesh renderMesh = new RenderMesh
+        {
+            mesh = chunkMesh,
+            material = this.cubeMaterial
+        };
+
+        entityManager.SetSharedComponentData(entity, renderMesh);
+
+        entityManager.SetComponentData(entity, new WorldChunk
+        {
+            position = new int3((int)position.x, (int)position.y, (int)position.z),
+            status = ChunkStatus.DRAW
+        });
+
+        entityManager.AddBuffer<VerticesBuffer>(entity);
+        entityManager.AddBuffer<TrianglesBuffer>(entity);
+
+        //NativeArray<float3> verticesArray = new NativeArray<float3>(chunkMesh.vertices.Length, Allocator.Temp);
+        
+        for (int i = 0; i < chunkMesh.vertices.Length; i++)
+        {
+            //If the speed of this function becomes a concern, this is a better solution, but uses unsafe code:
+            //https://gist.github.com/LotteMakesStuff/c2f9b764b15f74d14c00ceb4214356b4
+            //verticesArray[i] = new float3(mesh.vertices[i].x + pos.x, mesh.vertices[i].y + pos.y, mesh.vertices[i].z + pos.z);
+            //verticesArray[i] = chunkMesh.vertices[i];
+            entityManager.GetBuffer<VerticesBuffer>(entity).Reinterpret<float3>().Add(chunkMesh.vertices[i]);
+
+        }
+        //verticesBuffer.Reinterpret<float3>().AddRange(verticesArray);
+
+        //NativeList<int3> trianglesArray = new NativeList<int3>(Allocator.Temp);
+        for (int i = 0; i < chunkMesh.triangles.Length; i++)
+        {
+            if ((i + 1) % 3 == 0)
+                entityManager.GetBuffer<TrianglesBuffer>(entity).Add(new int3(chunkMesh.triangles[i - 2], chunkMesh.triangles[i - 1], chunkMesh.triangles[i]));
+        }
+
+        //trianglesBuffer.Reinterpret<int3>().AddRange(trianglesArray);
+
+        entityManager.AddComponentData(entity, new DrawChunkFlag { });
+        entityManager.AddComponentData(entity, new BuildCollisionMeshFlag { });
+
+        //RenderMesh(chunkMesh, this.cubeMaterial, this.position);
     }
 
     private void RenderMesh(Mesh mesh, Material material, float3 pos)

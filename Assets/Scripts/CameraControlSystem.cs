@@ -174,6 +174,35 @@ public class CameraControlSystem : ComponentSystem
         return 0f;
     }
 
+    private Entity currentChunk(Camera mainCamera)
+    {
+        var physicsWorldSystem = World.GetExistingSystem<Unity.Physics.Systems.BuildPhysicsWorld>();
+        var collisionWorld = physicsWorldSystem.PhysicsWorld.CollisionWorld;
+        RaycastInput input = new RaycastInput()
+        {
+            Start = mainCamera.transform.position,
+            End = new float3(mainCamera.transform.position.x, 0, mainCamera.transform.position.z),
+            Filter = new CollisionFilter()
+            {
+                BelongsTo = ~0u,
+                CollidesWith = ~0u, // all 1s, so all layers, collide with everything
+                GroupIndex = 0
+            }
+        };
+
+        Unity.Physics.RaycastHit hit = new Unity.Physics.RaycastHit();
+        bool haveHit = collisionWorld.CastRay(input, out hit);
+        if (haveHit)
+        {
+            // see hit.Position
+            // see hit.SurfaceNormal
+            Entity e = physicsWorldSystem.PhysicsWorld.Bodies[hit.RigidBodyIndex].Entity;
+            return e;
+        }
+
+        return Entity.Null;
+    }
+
     private void HeightCalculation(Camera mainCamera)
     {
         float distanceToGround = DistanceToGround(mainCamera);
@@ -194,13 +223,23 @@ public class CameraControlSystem : ComponentSystem
             new float3(mainCamera.transform.position.x, targetHeight + difference, mainCamera.transform.position.z), Time.DeltaTime * heightDampening);
     }
 
+    private Entity currentChunkEntity = Entity.Null;
+
     protected override void OnUpdate()
     {
         Camera mainCamera = Camera.main;
 
         move(mainCamera);
-        HeightCalculation(mainCamera);
+        //HeightCalculation(mainCamera);
         Rotation(mainCamera);
+
+        Entity e = currentChunk(mainCamera);
+        if(!e.Equals(Entity.Null) && !e.Equals(currentChunkEntity) && EntityManager.HasComponent(e, typeof(WorldChunk)))
+        {
+            PostUpdateCommands.AddComponent(e, new CurrentChunkFlag { });
+            PostUpdateCommands.RemoveComponent(currentChunkEntity, typeof(CurrentChunkFlag));
+            currentChunkEntity = e;
+        }   
 
     }
 }
