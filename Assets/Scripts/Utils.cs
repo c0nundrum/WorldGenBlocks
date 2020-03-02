@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.Mathematics;
+using Unity.
 
 public class Utils
 {
@@ -13,10 +14,11 @@ public class Utils
     public static int GenerateHeight(float x, float z)
     {
         //Parameters should come in from the chunk
+        //noise.pnoise
         float height = Map(0, maxHeight, 0, 1, FBM(x * smooth, z * smooth, octaves, persistence));
         return (int)height;
     }
-
+    
     public static int GenerateStoneHeight(float x, float z)
     {
         //Parameters should come in from the chunk

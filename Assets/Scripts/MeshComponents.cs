@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using UnityEngine;
 using UnityEngine.UI;
 using Unity.Entities;
@@ -15,15 +16,24 @@ public class MeshComponents : MonoBehaviour
     public Camera mainCamera;
     public static MeshComponents instance;
     public static int columnHeight = 8;
-    public static int chunkSize = 16;
+    public readonly static int chunkSize = 8;
     public static int worldSize = 2;
     public static int radius = 4;
+    public static List<string> toRemove = new List<string>();
 
-    public static Dictionary<string, Chunk> chunks;
+    public float3 lasbuildPos;
+
+    public static ConcurrentDictionary<string, Chunk> chunks;
+    public NativeHashMap<int3, Chunk> chunkMap;
 
     public static string BuildChunkName(float3 f)
     {
         return (int)f.x + "_" + (int)f.y + "_" + (int)f.z;
+    }
+
+    public static int3 ConcurrentChunkName(float3 f)
+    {
+        return new int3((int)f.x, (int)f.y, (int)f.z);
     }
 
     public Material textureAtlas;
@@ -42,29 +52,61 @@ public class MeshComponents : MonoBehaviour
         instance = this;
     }
 
+    public void BuildNearPlayer()
+    {
+        StopCoroutine("BuildRecursiveWorld");
+        StartCoroutine(BuildRecursiveWorld((int)(mainCamera.transform.position.x / chunkSize), (int)(mainCamera.transform.position.y / chunkSize), (int)(mainCamera.transform.position.z / chunkSize), radius));
+    }
+
     // Start is called before the first frame update
     void Start()
     {
-        entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
-        //archetype = entityManager.CreateArchetype(typeof(RenderMesh), typeof(LocalToWorld), typeof(Translation), typeof(Rotation), typeof(WorldChunk), typeof(PhysicsCollider));
-        archetype = entityManager.CreateArchetype(typeof(WorldChunk), typeof(LocalToWorld), typeof(RenderMesh));
+        Vector3 ppos = Camera.main.transform.position;
 
-        chunks = new Dictionary<string, Chunk>();
+        Camera.main.transform.position = new Vector3(ppos.x, Utils.GenerateHeight(ppos.x, ppos.z) + 10, ppos.z);
+
+        lasbuildPos = mainCamera.transform.position;
+        firstbuild = true;
+
+        //entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
+        //archetype = entityManager.CreateArchetype(typeof(RenderMesh), typeof(LocalToWorld), typeof(Translation), typeof(Rotation), typeof(WorldChunk), typeof(PhysicsCollider));
+        //archetype = entityManager.CreateArchetype(typeof(WorldChunk), typeof(LocalToWorld), typeof(RenderMesh));
+
+        //chunks = new ConcurrentDictionary<string, Chunk>();
         this.transform.position = Vector3.zero;
         this.transform.rotation = Quaternion.identity;
 
-        BuildChunkAt(0, 0, 0);
-        BuildChunkAt(1, 0, 0);
-        BuildChunkAt(2, 0, 0);
-        BuildChunkAt(3, 0, 0);
-        BuildChunkAt(4, 0, 0);
+        //Build starting Chunk
+        //BuildChunkAt((int)(Camera.main.transform.position.x/chunkSize), (int)(Camera.main.transform.position.y / chunkSize), (int)(Camera.main.transform.position.z / chunkSize));
+
+        //Draw it
+        //StartCoroutine(DrawChunks());
+
+        //Build Bigger World
+        //StartCoroutine(BuildRecursiveWorld((int)(Camera.main.transform.position.x/chunkSize), (int)(Camera.main.transform.position.y / chunkSize), (int)(Camera.main.transform.position.z / chunkSize), radius));
         StartCamera();
-        //StartBuild();
+        //StartBuildChunks();
+        StartBuildChunksJob();
+        
     }
 
     // Update is called once per frame
     void Update()
     {
+        float3 movement = lasbuildPos - new float3(mainCamera.transform.position);
+
+        //if(math.length(movement) > chunkSize)
+        //{
+        //    lasbuildPos = mainCamera.transform.position;
+        //    BuildNearPlayer();
+        //}
+
+        //if (firstbuild)
+        //{
+        //    StartCamera();
+        //    firstbuild = false;
+        //}
+        //StartCoroutine(DrawChunks());
     }
 
     private void StartCamera()
@@ -81,105 +123,147 @@ public class MeshComponents : MonoBehaviour
         ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
     }
 
+    private void StartBuildChunksJob()
+    {
+        var world = World.DefaultGameObjectInjectionWorld;
+        var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
+
+        var countSystem = world.GetOrCreateSystem<BuildChunkJob>();
+
+        simulationSystemGroup.AddSystemToUpdateList(countSystem);
+
+        simulationSystemGroup.SortSystemUpdateList();
+
+        ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
+    }
+
+    private void StartBuildChunks()
+    {
+        var world = World.DefaultGameObjectInjectionWorld;
+        var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
+
+        var countSystem = world.GetOrCreateSystem<BuildChunks>();
+
+        simulationSystemGroup.AddSystemToUpdateList(countSystem);
+
+        simulationSystemGroup.SortSystemUpdateList();
+
+        ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
+    }
+
     private void BuildChunkAt(int x, int y, int z)
     {
         Vector3 chunkPosition = new Vector3(x * chunkSize, y * chunkSize, z * chunkSize);
         string n = BuildChunkName(chunkPosition);
-        Chunk c;
-        if(!chunks.TryGetValue(n, out c))
+        if (!chunks.TryGetValue(n, out Chunk c))
         {
-            c = new Chunk(chunkPosition, textureAtlas, entityManager, archetype);
-            chunks.Add(c.chunkName, c);
-            c.DrawChunk();
+            //c = new Chunk(chunkPosition, textureAtlas, entityManager, archetype);
+            //chunks.TryAdd(c.chunkName, c);
+            //chunkMap.TryAdd(c.concurrentChunkName, c);
+            //c.DrawChunk();
         }
-
-        //foreach (KeyValuePair<string, Chunk> chunk in chunks)
-        //{
-        //    chunk.Value.DrawChunk();
-        //}
     }
 
-    private IEnumerator BuildWorld()
+    private IEnumerator BuildRecursiveWorld(int x, int y, int z, int rad)
     {
-        int posx = (int)math.floor(mainCamera.transform.position.x / chunkSize);
-        int posz = (int)math.floor(mainCamera.transform.position.z / chunkSize);
+        rad--;
+        if (rad <= 0) yield break;
 
-        float totalChunks = (math.pow(radius * 2 + 1, 2) * columnHeight) * 2;
+        //Build Chunk Front
+        BuildChunkAt(x, y, z + 1);
+        StartCoroutine(BuildRecursiveWorld(x, y, z + 1, rad));
+        yield return null;
 
-        for (int z = -radius; z <= radius; z++)
-            for (int x = -radius; x <= radius; x++)
-                for (int y = 0; y < columnHeight; y++)
-                {
-                    float3 chunkPosition = new float3((x+posx) * chunkSize, y * chunkSize, (z+posz) * chunkSize);
-                    Chunk c;
-                    string n = BuildChunkName(chunkPosition);
-                    if(chunks.TryGetValue(n, out c))
-                    {
-                        c.status = ChunkStatus.KEEP;
-                        break;
-                    }
-                    else
-                    {
-                        c = new Chunk(chunkPosition, textureAtlas, entityManager, archetype);
-                        chunks.Add(c.chunkName, c);
-                    }
+        //Build Chunk Back
+        BuildChunkAt(x, y, z - 1);
+        StartCoroutine(BuildRecursiveWorld(x, y, z - 1, rad));
+        yield return null;
 
-                    yield return null;
-                }
+        //Build Chunk left
+        BuildChunkAt(x -1, y, z);
+        StartCoroutine(BuildRecursiveWorld(x - 1, y, z, rad));
+        yield return null;
 
-        foreach (KeyValuePair<string, Chunk> c in chunks)
-        {
-            if(c.Value.status == ChunkStatus.DONE)
-            {
-                c.Value.DrawChunk();
-                c.Value.status = ChunkStatus.KEEP;
-            }
+        //Build Chunk right
+        BuildChunkAt(x + 1, y, z);
+        StartCoroutine(BuildRecursiveWorld(x + 1, y, z, rad));
+        yield return null;
 
-            //Delete old chunks here
+        //Build Chunk up
+        BuildChunkAt(x, y + 1, z);
+        StartCoroutine(BuildRecursiveWorld(x, y + 1, z, rad));
+        yield return null;
 
-            c.Value.status = ChunkStatus.DONE;
-            yield return null;
-        }
-
-        if (firstbuild)
-        {
-            var world = World.DefaultGameObjectInjectionWorld;
-            var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
-
-            var countSystem = world.GetOrCreateSystem<CameraControlSystem>();
-
-            simulationSystemGroup.AddSystemToUpdateList(countSystem);
-
-            simulationSystemGroup.SortSystemUpdateList();
-
-            ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
-
-            firstbuild = false;
-        }
-
+        //Build Chunk Down
+        BuildChunkAt(x, y - 1, z);
+        StartCoroutine(BuildRecursiveWorld(x, y - 1, z, rad));
+        yield return null;
     }
 
-    public void StartBuild()
+    private IEnumerator DrawChunks()
     {
-        StartCoroutine(BuildWorld());
-    }
-
-    private IEnumerator BuildChunkColumn()
-    {
-        for(int i = 0; i < columnHeight; i++)
-        {
-            float3 chunkPosition = new float3(this.transform.position.x, i * chunkSize, this.transform.position.z);
-            Chunk c = new Chunk(chunkPosition, textureAtlas, entityManager, archetype);
-            chunks.Add(c.chunkName, c);
-        }
-
         foreach(KeyValuePair<string, Chunk> c in chunks)
         {
-            c.Value.DrawChunk();
+            //if(c.Value.status == ChunkStatus.DRAW)
+            //{
+            //    Chunk value = c.Value;
+            //    value.DrawChunk();
+            //    value.status = ChunkStatus.KEEP;
+            //    chunks[c.Key] = value;
+            //}
             yield return null;
         }
-
     }
 
+    //private IEnumerator BuildWorld()
+    //{
+    //    int posx = (int)math.floor(mainCamera.transform.position.x / chunkSize);
+    //    int posz = (int)math.floor(mainCamera.transform.position.z / chunkSize);
+
+    //    float totalChunks = (math.pow(radius * 2 + 1, 2) * columnHeight) * 2;
+
+    //    for (int z = -radius; z <= radius; z++)
+    //        for (int x = -radius; x <= radius; x++)
+    //            for (int y = 0; y < columnHeight; y++)
+    //            {
+    //                float3 chunkPosition = new float3((x+posx) * chunkSize, y * chunkSize, (z+posz) * chunkSize);
+    //                Chunk c;
+    //                string n = BuildChunkName(chunkPosition);
+    //                if(chunks.TryGetValue(n, out c))
+    //                {
+    //                    //c.status = ChunkStatus.KEEP;
+    //                    break;
+    //                }
+    //                else
+    //                {
+    //                    //c = new Chunk(chunkPosition, textureAtlas, entityManager, archetype);
+    //                    chunks.TryAdd(c.chunkName, c);
+    //                }
+
+    //                yield return null;
+    //            }
+
+    //    if (firstbuild)
+    //    {
+    //        var world = World.DefaultGameObjectInjectionWorld;
+    //        var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
+
+    //        var countSystem = world.GetOrCreateSystem<CameraControlSystem>();
+
+    //        simulationSystemGroup.AddSystemToUpdateList(countSystem);
+
+    //        simulationSystemGroup.SortSystemUpdateList();
+
+    //        ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
+
+    //        firstbuild = false;
+    //    }
+
+    //}
+
+    //public void StartBuild()
+    //{
+    //    StartCoroutine(BuildWorld());
+    //}
 
 }

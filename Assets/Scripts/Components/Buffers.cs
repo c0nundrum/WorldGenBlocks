@@ -22,3 +22,14 @@ public struct TrianglesBuffer : IBufferElementData
     // Actual value each buffer element will store.
     public int3 Value;
 }
+
+[InternalBufferCapacity(512)]
+public struct BlockTypeBuffer : IBufferElementData
+{
+    // These implicit conversions are optional, but can help reduce typing.
+    public static implicit operator BlockType(BlockTypeBuffer e) { return e.Value; }
+    public static implicit operator BlockTypeBuffer(BlockType e) { return new BlockTypeBuffer { Value = e }; }
+
+    // Actual value each buffer element will store.
+    public BlockType Value;
+}

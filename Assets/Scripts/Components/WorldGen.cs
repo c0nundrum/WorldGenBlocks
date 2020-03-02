@@ -11,7 +11,6 @@ public struct WorldChunk : IComponentData
 {
     public int3 position;
     public ChunkStatus status;
-
 }
 
 public struct CurrentChunkFlag : IComponentData { };

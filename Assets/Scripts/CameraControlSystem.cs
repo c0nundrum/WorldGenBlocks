@@ -205,7 +205,7 @@ public class CameraControlSystem : ComponentSystem
 
     private void HeightCalculation(Camera mainCamera)
     {
-        float distanceToGround = DistanceToGround(mainCamera);
+        //float distanceToGround = DistanceToGround(mainCamera);
         if (useScrollwheelZooming)
             zoomPos += ScrollWheel * Time.DeltaTime * scrollWheelZoomingSensitivity;
         if (useKeyboardZooming)
@@ -216,8 +216,8 @@ public class CameraControlSystem : ComponentSystem
         float targetHeight = Mathf.Lerp(minHeight, maxHeight, zoomPos);
         float difference = 0;
 
-        if (distanceToGround != targetHeight)
-            difference = targetHeight - distanceToGround;
+        //if (distanceToGround != targetHeight)
+        //    difference = targetHeight - distanceToGround;
 
         mainCamera.transform.position = Vector3.Lerp(mainCamera.transform.position,
             new float3(mainCamera.transform.position.x, targetHeight + difference, mainCamera.transform.position.z), Time.DeltaTime * heightDampening);

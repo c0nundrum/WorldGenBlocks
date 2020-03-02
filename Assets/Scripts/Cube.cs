@@ -1,11 +1,14 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using Unity.Mathematics;
 using UnityEngine;
+using Unity.Entities;
+using Unity.Collections;
 
 public enum BlockType { GRASS, DIRT, STONE, DIAMOND, AIR };
 
-public class Block
+public struct Block
 {
 
     private enum Cubeside { BOTTOM, TOP, LEFT, FRONT, BACK, RIGHT };
@@ -14,29 +17,37 @@ public class Block
     private BlockType bType;
     private Chunk owner;
     private Vector3 position;
-    private Material material;
 
     private const float ATLAS_SIZE = 0.03125f;
 
-    private readonly Vector2[,] blockUVs =
-{
-        /*GRASS TOP*/ { new Vector2(19 * ATLAS_SIZE, 29 * ATLAS_SIZE), new Vector2(20 * ATLAS_SIZE, 29 * ATLAS_SIZE),
-                                    new Vector2(19 * ATLAS_SIZE, 28 * ATLAS_SIZE), new Vector2(20 * ATLAS_SIZE, 28 * ATLAS_SIZE)},
-        /*GRASS SIDE*/ { new Vector2(19 * ATLAS_SIZE, 28 * ATLAS_SIZE), new Vector2(20 * ATLAS_SIZE, 28 * ATLAS_SIZE),
-                                new Vector2(19 * ATLAS_SIZE, 27 * ATLAS_SIZE), new Vector2(20 * ATLAS_SIZE, 27 * ATLAS_SIZE)},
-        /*DIRT*/ { new Vector2(18 * ATLAS_SIZE, 32 * ATLAS_SIZE), new Vector2(19 * ATLAS_SIZE, 32 * ATLAS_SIZE),
-                                new Vector2(18 * ATLAS_SIZE, 31 * ATLAS_SIZE), new Vector2(19 * ATLAS_SIZE, 31 * ATLAS_SIZE)},
-        /*STONE*/ { new Vector2(20 * ATLAS_SIZE, 26 * ATLAS_SIZE), new Vector2(21 * ATLAS_SIZE, 26 * ATLAS_SIZE),
-                                new Vector2(20 * ATLAS_SIZE, 25 * ATLAS_SIZE), new Vector2(21 * ATLAS_SIZE, 25 * ATLAS_SIZE)},
-        /*DIAMOND*/ { new Vector2(0 * ATLAS_SIZE, 1 * ATLAS_SIZE), new Vector2(1 * ATLAS_SIZE, 1 * ATLAS_SIZE),
-                                new Vector2(1 * ATLAS_SIZE, 0 * ATLAS_SIZE), new Vector2(1 * ATLAS_SIZE, 1 * ATLAS_SIZE)}
-    };
+    private Vector2[,] blockUVs;
 
     public Block(BlockType b, Vector3 pos, Chunk owner)
     {
+        Vector2[,] blockUVs = {
+            /*GRASS TOP*/
+            {
+                new Vector2(19 * ATLAS_SIZE, 29 * ATLAS_SIZE), new Vector2(20 * ATLAS_SIZE, 29 * ATLAS_SIZE),
+                                    new Vector2(19 * ATLAS_SIZE, 28 * ATLAS_SIZE), new Vector2(20 * ATLAS_SIZE, 28 * ATLAS_SIZE)},
+        /*GRASS SIDE*/ {
+                new Vector2(19 * ATLAS_SIZE, 28 * ATLAS_SIZE), new Vector2(20 * ATLAS_SIZE, 28 * ATLAS_SIZE),
+                                new Vector2(19 * ATLAS_SIZE, 27 * ATLAS_SIZE), new Vector2(20 * ATLAS_SIZE, 27 * ATLAS_SIZE)},
+        /*DIRT*/ {
+                new Vector2(18 * ATLAS_SIZE, 32 * ATLAS_SIZE), new Vector2(19 * ATLAS_SIZE, 32 * ATLAS_SIZE),
+                                new Vector2(18 * ATLAS_SIZE, 31 * ATLAS_SIZE), new Vector2(19 * ATLAS_SIZE, 31 * ATLAS_SIZE)},
+        /*STONE*/ {
+                new Vector2(20 * ATLAS_SIZE, 26 * ATLAS_SIZE), new Vector2(21 * ATLAS_SIZE, 26 * ATLAS_SIZE),
+                                new Vector2(20 * ATLAS_SIZE, 25 * ATLAS_SIZE), new Vector2(21 * ATLAS_SIZE, 25 * ATLAS_SIZE)},
+        /*DIAMOND*/ {
+                new Vector2(0 * ATLAS_SIZE, 1 * ATLAS_SIZE), new Vector2(1 * ATLAS_SIZE, 1 * ATLAS_SIZE),
+                                new Vector2(1 * ATLAS_SIZE, 0 * ATLAS_SIZE), new Vector2(1 * ATLAS_SIZE, 1 * ATLAS_SIZE)}
+        };
+        //this.chunkMap = chunkMap;
+        this.blockUVs = blockUVs;
         this.owner = owner;
         bType = b;
         position = pos;
+        //this.material = material;
         if(bType == BlockType.AIR)
             isSolid = false;
         else
@@ -179,7 +190,7 @@ public class Block
 
     }
 
-    public bool HasSolidNeighbour(int x, int y, int z)
+    public bool HasSolidNeighbour(int x, int y, int z, ConcurrentDictionary<int3, Chunk> chunkMap)
     {
         //If this is ever is Jobified, this will be a memory sink
         Block[,,] chunks;
@@ -197,8 +208,7 @@ public class Block
             y = ConvertBlockIndexToLocal(y);
             z = ConvertBlockIndexToLocal(z);
 
-            Chunk nChunk;
-            if(MeshComponents.chunks.TryGetValue(nName, out nChunk))
+            if(chunkMap.TryGetValue(new int3(neighbourChunkPos), out Chunk nChunk))
             {
                 chunks = nChunk.chunkData;
             }
@@ -237,23 +247,23 @@ public class Block
         return i;
     }
 
-    public Mesh CreateCube()
+    public Mesh CreateCube(ConcurrentDictionary<int3, Chunk> chunkMap)
     {
         if (bType == BlockType.AIR) return null;
 
         List<Mesh> quads = new List<Mesh>();
 
-        if(!HasSolidNeighbour((int)position.x, (int)position.y ,(int)position.z + 1))
+        if(!HasSolidNeighbour((int)position.x, (int)position.y ,(int)position.z + 1, chunkMap))
             quads.Add(CreateQuads(Cubeside.FRONT, bType));
-        if (!HasSolidNeighbour((int)position.x, (int)position.y, (int)position.z - 1))
+        if (!HasSolidNeighbour((int)position.x, (int)position.y, (int)position.z - 1, chunkMap))
             quads.Add(CreateQuads(Cubeside.BACK, bType));
-        if (!HasSolidNeighbour((int)position.x, (int)position.y + 1, (int)position.z))
+        if (!HasSolidNeighbour((int)position.x, (int)position.y + 1, (int)position.z, chunkMap))
             quads.Add(CreateQuads(Cubeside.TOP, bType));
-        if (!HasSolidNeighbour((int)position.x, (int)position.y - 1, (int)position.z))
+        if (!HasSolidNeighbour((int)position.x, (int)position.y - 1, (int)position.z, chunkMap))
             quads.Add(CreateQuads(Cubeside.BOTTOM, bType));
-        if (!HasSolidNeighbour((int)position.x - 1, (int)position.y, (int)position.z))
+        if (!HasSolidNeighbour((int)position.x - 1, (int)position.y, (int)position.z, chunkMap))
             quads.Add(CreateQuads(Cubeside.LEFT, bType));
-        if (!HasSolidNeighbour((int)position.x + 1, (int)position.y, (int)position.z))
+        if (!HasSolidNeighbour((int)position.x + 1, (int)position.y, (int)position.z, chunkMap))
             quads.Add(CreateQuads(Cubeside.RIGHT, bType));
         
 
