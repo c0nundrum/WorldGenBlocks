@@ -33,3 +33,14 @@ public struct BlockTypeBuffer : IBufferElementData
     // Actual value each buffer element will store.
     public BlockType Value;
 }
+
+[InternalBufferCapacity(512)]
+public struct WorldChunksBuffer : IBufferElementData
+{
+    // These implicit conversions are optional, but can help reduce typing.
+    public static implicit operator int3(WorldChunksBuffer e) { return e.Value; }
+    public static implicit operator WorldChunksBuffer(int3 e) { return new WorldChunksBuffer { Value = e }; }
+
+    // Actual value each buffer element will store.
+    public int3 Value;
+}

@@ -18,8 +18,8 @@ public class MeshComponents : MonoBehaviour
     public static int columnHeight = 8;
     public readonly static int chunkSize = 8;
     public static int worldSize = 2;
-    public static int radius = 4;
-    public static List<string> toRemove = new List<string>();
+    public readonly static int radius = 2;
+    //public static List<string> toRemove = new List<string>();
 
     public float3 lasbuildPos;
 
@@ -86,8 +86,11 @@ public class MeshComponents : MonoBehaviour
         //StartCoroutine(BuildRecursiveWorld((int)(Camera.main.transform.position.x/chunkSize), (int)(Camera.main.transform.position.y / chunkSize), (int)(Camera.main.transform.position.z / chunkSize), radius));
         StartCamera();
         //StartBuildChunks();
+        //CreateChunkController();
         StartBuildChunksJob();
-        
+        StartDeleteChunksJob();
+
+
     }
 
     // Update is called once per frame
@@ -107,6 +110,15 @@ public class MeshComponents : MonoBehaviour
         //    firstbuild = false;
         //}
         //StartCoroutine(DrawChunks());
+    }
+
+    private void CreateChunkController()
+    {
+        var entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
+
+        Entity en = entityManager.CreateEntity();
+        entityManager.AddBuffer<WorldChunksBuffer>(en);
+
     }
 
     private void StartCamera()
@@ -137,12 +149,12 @@ public class MeshComponents : MonoBehaviour
         ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
     }
 
-    private void StartBuildChunks()
+    private void StartDeleteChunksJob()
     {
         var world = World.DefaultGameObjectInjectionWorld;
         var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
 
-        var countSystem = world.GetOrCreateSystem<BuildChunks>();
+        var countSystem = world.GetOrCreateSystem<DeleteChunks>();
 
         simulationSystemGroup.AddSystemToUpdateList(countSystem);
 

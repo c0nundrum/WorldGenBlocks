@@ -1,250 +1,372 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using System.Collections.Concurrent;
-using UnityEngine;
+﻿using UnityEngine;
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Transforms;
-using Unity.Rendering;
 using Unity.Burst;
+using Unity.Physics;
 
 [DisableAutoCreation]
 [UpdateBefore(typeof(Drawchunk))]
 public class BuildChunkJob : JobComponentSystem
 {
-    private NativeHashMap<int3, ChunkValue> chunkValueMap;
     private Camera mainCamera;
     private float3 lastbuildPos;
 
+    private readonly int bufferSize = 1;
+
+    private EntityArchetype chunkArchetype;
+
     private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
 
+    private Unity.Physics.Systems.BuildPhysicsWorld physicsWorldSystem;
+
+    [BurstCompile]
     private struct BuildChunkAt : IJobParallelFor
     {
         [ReadOnly]
         [DeallocateOnJobCompletion]public NativeArray<int3> positionArray;
         [ReadOnly]
         public EntityArchetype archetype;
-
-        [NativeDisableParallelForRestriction]
-        public BufferFromEntity<BlockTypeBuffer> bufferFromEntity;
-        
-        public NativeHashMap<int3, ChunkValue>.ParallelWriter chunkValueMapWriter;
+        [ReadOnly]
+        public int chunkSize;
+        [ReadOnly] public CollisionWorld world;
 
         public EntityCommandBuffer.Concurrent commandBuffer;
 
+        public unsafe void Execute(int index)
+        {
+            if (positionArray[index].Equals(new int3(int.MinValue, 0 ,0))) return;
+
+            float3 chunkPosition = new float3(positionArray[index].x * chunkSize, positionArray[index].y * chunkSize, positionArray[index].z * chunkSize);
+
+            Unity.Physics.RaycastHit hit;
+
+            //Need to set up collision layers properly
+            RaycastInput input = new RaycastInput()
+            {
+                Filter = new CollisionFilter()
+                {
+                    BelongsTo = ~0u,
+                    CollidesWith = ~0u, // all 1s, so all layers, collide with everything
+                    GroupIndex = 0
+                }
+            };
+
+            bool haveHit = world.CastRay(input, out hit);
+
+            if (!haveHit)
+            {
+                int3 position = new int3((int3)math.floor(chunkPosition));
+
+                ChunkValue c = new ChunkValue { position = chunkPosition };
+
+                Entity entity = commandBuffer.CreateEntity(index, archetype);
+
+                commandBuffer.SetComponent(index, entity, new WorldChunk
+                {
+                    position = new int3((int)c.position.x, (int)c.position.y, (int)c.position.z),
+                    status = ChunkStatus.KEEP
+                });
+
+                commandBuffer.SetComponent(index, entity, new Translation
+                {
+                    Value = chunkPosition
+                });
+
+                commandBuffer.SetComponent(index, entity, new Rotation { Value = quaternion.identity });
+
+                BoxGeometry bm = new BoxGeometry
+                {
+                    BevelRadius = 0f,
+                    Center = float3.zero,
+                    Orientation = quaternion.identity,
+                    Size = new float3(chunkSize)
+                };
+
+                commandBuffer.SetComponent(index, entity, new PhysicsCollider
+                {
+                    Value = Unity.Physics.BoxCollider.Create(bm)
+                });
+
+                var buffer = commandBuffer.AddBuffer<BlockTypeBuffer>(index, entity);
+                buffer.Reinterpret<BlockType>().AddRange(GetBlockArray(chunkPosition));
+            }
+
+        }
+
+        private float Map(float newmin, float newmax, float originalMin, float originalMax, float value)
+        {
+            return math.lerp(newmin, newmax, math.unlerp(originalMin, originalMax, value));
+        }
+
+        private int GenerateHeight(float x, float z)
+        {
+            int maxHeight = 150;
+            float smooth = 0.01f;
+            int octaves = 4;
+            float persistence = 0.5f;
+            //Parameters should come in from the chunk
+            float height = Map(0, maxHeight, 0, 1, FBM(x * smooth, z * smooth, octaves, persistence));
+            return (int)height;
+        }
+
+        private int GenerateStoneHeight(float x, float z)
+        {
+            int maxHeight = 150;
+            float smooth = 0.01f;
+            int octaves = 4;
+            float persistence = 0.5f;
+            //Parameters should come in from the chunk
+            float height = Map(0, maxHeight - 5, 0, 1, FBM(x * smooth * 2, z * smooth * 2, octaves + 1, persistence));
+            return (int)height;
+        }
+
+        private float FBM(float x, float z, int oct, float pers)
+        {
+            float total = 0;
+            float frequency = 1;
+            float amplitude = 1;
+            float maxValue = 0;
+            float offset = 32000f;
+
+            for (int i = 0; i < oct; i++)
+            {
+                total += noise.cnoise(new float2(x + offset * frequency, z + offset * frequency)) * amplitude;
+
+                maxValue += amplitude;
+
+                amplitude *= pers;
+                frequency *= 2;
+            }
+
+            return total / maxValue;
+        }
+
+        private float FBM3D(float x, float y, float z, float sm, int oct)
+        {
+            float XY = FBM(x * sm, y * sm, oct, 0.5f);
+            float YZ = FBM(y * sm, z * sm, oct, 0.5f);
+            float XZ = FBM(x * sm, z * sm, oct, 0.5f);
+
+            float YX = FBM(y * sm, x * sm, oct, 0.5f);
+            float ZY = FBM(z * sm, y * sm, oct, 0.5f);
+            float ZX = FBM(z * sm, x * sm, oct, 0.5f);
+
+            return math.unlerp(-1, 1,((XY + YZ + XZ + YX + ZY + ZX) / 6.0f));
+        }
+
+        private NativeArray<BlockType> GetBlockArray(float3 position)
+        {
+            NativeArray<BlockType> blockArray = new NativeArray<BlockType>((int)math.pow(chunkSize, 3), Allocator.Temp); // this gets sent to dynamic buffer
+
+            for (int z = 0; z < chunkSize; z++)
+            {
+                for (int y = 0; y < chunkSize; y++)
+                {
+                    for (int x = 0; x < chunkSize; x++)
+                    {
+                        float3 pos = new float3(x, y, z);
+                        int worldX = (int)(x + position.x);
+                        int worldY = (int)(y + position.y);
+                        int worldZ = (int)(z + position.z);
+
+                        float value1 = FBM3D(worldX, worldY, worldZ, 0.1f, 3);
+
+                        if (FBM3D(worldX, worldY, worldZ, 0.1f, 3) < 0.48f)
+                            blockArray[x + chunkSize * (y + chunkSize * z)] = BlockType.AIR;
+                        else if (worldY <= GenerateStoneHeight(worldX, worldZ))
+                            if (FBM3D(worldX, worldY, worldZ, 0.01f, 2) < 0.38f && worldY < 40)
+                                blockArray[x + chunkSize * (y + chunkSize * z)] = BlockType.DIAMOND;
+                            else
+                                blockArray[x + chunkSize * (y + chunkSize * z)] = BlockType.STONE;
+                        else if (worldY == GenerateHeight(worldX, worldZ))
+                            blockArray[x + chunkSize * (y + chunkSize * z)] = BlockType.GRASS;
+                        else if (worldY < GenerateHeight(worldX, worldZ))
+                            blockArray[x + chunkSize * (y + chunkSize * z)] = BlockType.DIRT;
+                        else
+                            blockArray[x + chunkSize * (y + chunkSize * z)] = BlockType.AIR;
+                    }
+
+                }
+            }
+
+            return blockArray;
+        }
+    }
+
+    [BurstCompile]
+    private struct GetPositionList : IJobParallelFor
+    {
+        [ReadOnly]
+        public int3 cameraPosition;
+        [WriteOnly]
+        public NativeArray<int3> outputFront;
+        [WriteOnly]
+        public NativeArray<int3> outputBack;
+        [WriteOnly]
+        public NativeArray<int3> outputLeft;
+        [WriteOnly]
+        public NativeArray<int3> outputRight;
+        [WriteOnly]
+        public NativeArray<int3> outputUp;
+        [WriteOnly]
+        public NativeArray<int3> outputDown;
+
         public void Execute(int index)
         {
-            float3 chunkPosition = new float3(positionArray[index].x * MeshComponents.chunkSize, positionArray[index].y * MeshComponents.chunkSize, positionArray[index].z * MeshComponents.chunkSize);
-            int3 position = new int3((int3)math.floor(chunkPosition));
-            
-            ChunkValue c = new ChunkValue { position = chunkPosition };
+            //List Chunk Front
+            outputFront[index] = new int3(cameraPosition.x, cameraPosition.y, cameraPosition.z + index);
 
-            chunkValueMapWriter.TryAdd(position, c);
-                 
-            Entity entity = commandBuffer.CreateEntity(index, archetype);
+            //List Chunk Back
+            outputBack[index] = new int3(cameraPosition.x, cameraPosition.y, cameraPosition.z - index);
 
-            commandBuffer.SetComponent(index, entity, new WorldChunk
-            {
-                position = new int3((int)c.position.x, (int)c.position.y, (int)c.position.z),
-                status = ChunkStatus.KEEP
-            });
+            //List Chunk left
+            outputLeft[index] = new int3(cameraPosition.x - index, cameraPosition.y, cameraPosition.z);
 
-            var buffer = commandBuffer.AddBuffer<BlockTypeBuffer>(index, entity);
-            buffer.Reinterpret<BlockType>().AddRange(c.GetBlockArray());
+            //List Chunk right
+            outputRight[index] = new int3(cameraPosition.x + index, cameraPosition.y, cameraPosition.z);
+
+            //List Chunk up
+            outputUp[index] = new int3(cameraPosition.x, cameraPosition.y + index, cameraPosition.z);
+
+            //Build Chunk Down
+            outputDown[index] = new int3(cameraPosition.x, cameraPosition.y - index, cameraPosition.z);
 
         }
     }
 
-    protected override void OnCreate()
+    [BurstCompile]
+    private struct CombineArray : IJob
     {
-        endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+        [ReadOnly]
+        [DeallocateOnJobCompletion]public NativeArray<int3> inputFront;
+        [ReadOnly]
+        [DeallocateOnJobCompletion] public NativeArray<int3> inputBack;
+        [ReadOnly]
+        [DeallocateOnJobCompletion] public NativeArray<int3> inputLeft;
+        [ReadOnly]
+        [DeallocateOnJobCompletion] public NativeArray<int3> inputRight;
+        [ReadOnly]
+        [DeallocateOnJobCompletion] public NativeArray<int3> inputUp;
+        [ReadOnly]
+        [DeallocateOnJobCompletion] public NativeArray<int3> inputDown;
 
-        chunkValueMap = new NativeHashMap<int3, ChunkValue>(64, Allocator.Persistent);
+        [WriteOnly]
+        public NativeArray<int3> output; // Should be the length * 6
 
-        mainCamera = Camera.main;
+        public void Execute()
+        {
 
-        lastbuildPos = mainCamera.transform.position;
+            int length = inputFront.Length; //Arbitrary, all of them have the same length
 
-        NativeArray<int3> PositionArray = new NativeArray<int3>(1, Allocator.TempJob);
-        PositionArray[0] = new int3(0, 0, 0);
+            for (int index = 0; index < length; index++)
+            {
+                output[index] = inputFront[index];
+                output[length + index] = inputBack[index];
+                output[index + (length * 2)] = inputLeft[index];
+                output[index + (length * 3)] = inputRight[index];
+                output[index + (length * 4)] = inputUp[index];
+                output[index + (length * 5)] = inputDown[index];
+            }
+
+        }
+    }
+
+    [BurstCompile]
+    public struct EnsureUnique : IJob
+    {
+        [ReadOnly]
+        [DeallocateOnJobCompletion] public NativeArray<int3> aliasedArray;
+
+        public NativeArray<int3> output;
+
+        public void Execute()
+        {
+            int counter = 0;
+            for(int i = 0; i < aliasedArray.Length; i++)
+            {
+                
+                if (!output.Contains(aliasedArray[i]))
+                {
+                    output[counter] = aliasedArray[i];
+                    counter++;
+                }
+            }
+        }
+    }
+
+    private JobHandle Buildworld(int x, int y, int z)
+    {
+        NativeArray<int3> PositionArray = new NativeArray<int3>(MeshComponents.radius * 6, Allocator.TempJob);
+        NativeArray<int3> PositionUniqueArray = new NativeArray<int3>(MeshComponents.radius * 6 - 5, Allocator.TempJob);
+
+        NativeArray<int3> outputBack = new NativeArray<int3>(MeshComponents.radius, Allocator.TempJob);
+        NativeArray<int3> outputDown = new NativeArray<int3>(MeshComponents.radius, Allocator.TempJob);
+        NativeArray<int3> outputFront = new NativeArray<int3>(MeshComponents.radius, Allocator.TempJob);
+        NativeArray<int3> outputLeft = new NativeArray<int3>(MeshComponents.radius, Allocator.TempJob);
+        NativeArray<int3> outputRight = new NativeArray<int3>(MeshComponents.radius, Allocator.TempJob);
+        NativeArray<int3> outputUp = new NativeArray<int3>(MeshComponents.radius, Allocator.TempJob);
+
+        GetPositionList getPositionList = new GetPositionList
+        {
+            cameraPosition = new int3(x, y, z),
+            outputBack = outputBack,
+            outputDown = outputDown,
+            outputFront = outputFront,
+            outputLeft = outputLeft,
+            outputRight = outputRight,
+            outputUp = outputUp
+        };
+
+        JobHandle getPositionListHandle = getPositionList.Schedule(outputBack.Length, 8);
+
+        CombineArray combineArray = new CombineArray
+        {
+            inputBack = outputBack,
+            inputDown = outputDown,
+            inputFront = outputFront,
+            inputLeft = outputLeft,
+            inputRight = outputRight,
+            inputUp = outputUp,
+            output = PositionArray
+        };
+
+        JobHandle combineArrayJob = combineArray.Schedule(getPositionListHandle);
+
+        EnsureUnique ensureUniqueJob = new EnsureUnique
+        {
+            aliasedArray = PositionArray,
+            output = PositionUniqueArray
+        };
+
+        var ensureUniqueJobHandle = ensureUniqueJob.Schedule(combineArrayJob);
+
+        physicsWorldSystem = World.DefaultGameObjectInjectionWorld.GetExistingSystem<Unity.Physics.Systems.BuildPhysicsWorld>();
 
         BuildChunkAt job = new BuildChunkAt
         {
-            archetype = EntityManager.CreateArchetype(typeof(WorldChunk)),
-            bufferFromEntity = GetBufferFromEntity<BlockTypeBuffer>(false),
-            chunkValueMapWriter = chunkValueMap.AsParallelWriter(),
+            archetype = chunkArchetype,
             commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
-            positionArray = PositionArray
+            positionArray = PositionUniqueArray,
+            chunkSize = MeshComponents.chunkSize,
+            world = physicsWorldSystem.PhysicsWorld.CollisionWorld
         };
 
-        var handle = job.Schedule(PositionArray.Length, 8);
+        var handle = job.Schedule(PositionUniqueArray.Length, 8, ensureUniqueJobHandle);
 
-        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(handle);
+        handle.Complete();
 
-        base.OnCreate();
+        return ensureUniqueJobHandle;
     }
 
-    protected override JobHandle OnUpdate(JobHandle inputDeps)
+    public JobHandle BuildNearPlayer()
     {
-        //Next step, create the recursive function to add all the positions to build to the array
-        //float3 movement = lastbuildPos - new float3(mainCamera.transform.position);
-
-        //if (math.length(movement) > chunkSize * bufferSize)
-        //{
-        //    lastbuildPos = mainCamera.transform.position;
-        //    BuildNearPlayer();
-        //}
-        return inputDeps;
-    }
-}
-
-[DisableAutoCreation]
-[UpdateBefore(typeof(Drawchunk))]
-public class BuildChunks : ComponentSystem
-{
-    private int chunkSize = 16;
-    private int radius = 4;
-    public ConcurrentDictionary<int3, Chunk> chunkMap;
-    public ConcurrentDictionary<int3, ChunkValue> chunkValueMap;
-    private Material textureAtlas;
-    private Camera mainCamera;
-
-    private float3 lastbuildPos;
-    private int bufferSize = 1;
-
-    private void BuildChunkValueAt(int x, int y, int z)
-    {
-        float3 chunkPosition = new float3(x * MeshComponents.chunkSize, y * MeshComponents.chunkSize, z * MeshComponents.chunkSize);
-        int3 position = new int3((int3)math.floor(chunkPosition));
-        if (!chunkValueMap.TryGetValue(position, out ChunkValue e))
-        {
-            ChunkValue c = new ChunkValue { position = chunkPosition };
-            BuildChunkentity(c);
-            chunkValueMap.TryAdd(position, c);
-
-        }
+        return 
+            Buildworld((int)(mainCamera.transform.position.x / MeshComponents.chunkSize), (int)(mainCamera.transform.position.y / MeshComponents.chunkSize), (int)(mainCamera.transform.position.z / MeshComponents.chunkSize));
     }
 
-    private void BuildChunkAt(int x, int y, int z)
-    {
-        Vector3 chunkPosition = new Vector3(x * chunkSize, y * chunkSize, z * chunkSize);
-        int3 position = new int3((int3)math.floor(chunkPosition));
-        if (!chunkMap.TryGetValue(position, out Chunk e))
-        {
-            Chunk c = new Chunk(chunkPosition);
-            DrawChunk(c);
-            chunkMap.TryAdd(position, c);            
-        }
-    }
-
-    private void BuildRecursiveWorld(int x, int y, int z, int rad)
-    {
-        rad--;
-        if (rad <= 0) return;
-
-        //Build Chunk Front
-        BuildChunkAt(x, y, z + 1);
-        BuildRecursiveWorld(x, y, z + 1, rad);
-
-        //Build Chunk Back
-        BuildChunkAt(x, y, z - 1);
-        BuildRecursiveWorld(x, y, z - 1, rad);
-
-        //Build Chunk left
-        BuildChunkAt(x - 1, y, z);
-        BuildRecursiveWorld(x - 1, y, z, rad);
-
-        //Build Chunk right
-        BuildChunkAt(x + 1, y, z);
-        BuildRecursiveWorld(x + 1, y, z, rad);
-
-        //Build Chunk up
-        BuildChunkAt(x, y + 1, z);
-        BuildRecursiveWorld(x, y + 1, z, rad);
-
-        //Build Chunk Down
-        BuildChunkAt(x, y - 1, z);
-        BuildRecursiveWorld(x, y - 1, z, rad);
-    }
-
-    private void BuildChunkentity(ChunkValue c)
-    {
-        EntityManager entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
-
-        EntityArchetype archetype = entityManager.CreateArchetype(typeof(WorldChunk));
-
-        Entity entity = entityManager.CreateEntity(archetype);
-
-        entityManager.SetComponentData(entity, new WorldChunk
-        {
-            position = new int3((int)c.position.x, (int)c.position.y, (int)c.position.z),
-            status = ChunkStatus.KEEP
-        });
-
-        entityManager.AddBuffer<BlockTypeBuffer>(entity);
-
-        entityManager.GetBuffer<BlockTypeBuffer>(entity).Reinterpret<BlockType>().AddRange(c.GetBlockArray());
-    }
-
-    private void DrawChunk(Chunk c)
-    {
-        EntityManager entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
-
-        List<Mesh> chunk = new List<Mesh>();
-
-        for (int z = 0; z < MeshComponents.chunkSize; z++)
-        {
-            for (int y = 0; y < MeshComponents.chunkSize; y++)
-            {
-                for (int x = 0; x < MeshComponents.chunkSize; x++)
-                {
-                    if (c.chunkData[x, y, z].isSolid)
-                        chunk.Add(c.chunkData[x, y, z].CreateCube(chunkMap));
-                }
-
-            }
-        }
-
-        CombineInstance[] array = new CombineInstance[chunk.Count];
-
-        for (int i = 0; i < array.Length; i++)
-        {
-            array[i].mesh = chunk[i];
-        }
-
-        Mesh chunkMesh = new Mesh();
-        //since our cubes are created on the correct spot already, we dont need a matrix, and so far, no light data
-        chunkMesh.CombineMeshes(array, true, false, false);
-
-        EntityArchetype archetype = entityManager.CreateArchetype(typeof(WorldChunk), typeof(LocalToWorld), typeof(RenderMesh));
-
-        Entity entity = entityManager.CreateEntity(archetype);
-
-        RenderMesh renderMesh = new RenderMesh
-        {
-            mesh = chunkMesh,
-            material = textureAtlas
-        };
-
-        entityManager.SetSharedComponentData(entity, renderMesh);
-
-        entityManager.SetComponentData(entity, new WorldChunk
-        {
-            position = new int3((int)c.position.x, (int)c.position.y, (int)c.position.z),
-            status = ChunkStatus.KEEP
-        });
-
-        entityManager.AddComponentData(entity, new DrawChunkFlag { });
-        entityManager.AddComponentData(entity, new BuildCollisionMeshFlag { });
-
-    }
-
-    public void BuildNearPlayer()
-    {
-        BuildRecursiveWorld((int)(mainCamera.transform.position.x / chunkSize), (int)(mainCamera.transform.position.y / chunkSize), (int)(mainCamera.transform.position.z / chunkSize), radius);
-    }
 
     protected override void OnDestroy()
     {
@@ -253,28 +375,32 @@ public class BuildChunks : ComponentSystem
 
     protected override void OnCreate()
     {
-        chunkMap = new ConcurrentDictionary<int3, Chunk>();
-        chunkValueMap = new ConcurrentDictionary<int3, ChunkValue>();
+
+        chunkArchetype = EntityManager.CreateArchetype(typeof(WorldChunk), typeof(Translation), typeof(Rotation), typeof(PhysicsCollider));
+
+        endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+
         mainCamera = Camera.main;
-        textureAtlas = MeshComponents.instance.textureAtlas;
+
         lastbuildPos = mainCamera.transform.position;
 
-        //BuildRecursiveWorld((int)(mainCamera.transform.position.x / chunkSize), (int)(mainCamera.transform.position.y / chunkSize), (int)(mainCamera.transform.position.z / chunkSize), radius);
-
-        BuildChunkValueAt(0, 0, 0);
+        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(BuildNearPlayer());
 
         base.OnCreate();
     }
 
-    protected override void OnUpdate()
+    protected override JobHandle OnUpdate(JobHandle inputDeps)
     {
-        //float3 movement = lastbuildPos - new float3(mainCamera.transform.position);
+        float3 movement = lastbuildPos - new float3(mainCamera.transform.position);
 
-        //if (math.length(movement) > chunkSize * bufferSize)
-        //{
-        //    lastbuildPos = mainCamera.transform.position;
-        //    BuildNearPlayer();
-        //}
+        if (math.length(movement) > MeshComponents.chunkSize * bufferSize)
+        {          
+            lastbuildPos = mainCamera.transform.position;
+            inputDeps = BuildNearPlayer();
+        }
+
+        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
+
+        return inputDeps;
     }
-
 }

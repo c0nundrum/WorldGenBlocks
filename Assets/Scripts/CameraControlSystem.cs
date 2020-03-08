@@ -233,13 +233,13 @@ public class CameraControlSystem : ComponentSystem
         //HeightCalculation(mainCamera);
         Rotation(mainCamera);
 
-        Entity e = currentChunk(mainCamera);
-        if(!e.Equals(Entity.Null) && !e.Equals(currentChunkEntity) && EntityManager.HasComponent(e, typeof(WorldChunk)))
-        {
-            PostUpdateCommands.AddComponent(e, new CurrentChunkFlag { });
-            PostUpdateCommands.RemoveComponent(currentChunkEntity, typeof(CurrentChunkFlag));
-            currentChunkEntity = e;
-        }   
+        //Entity e = currentChunk(mainCamera);
+        //if(!e.Equals(Entity.Null) && !e.Equals(currentChunkEntity) && EntityManager.HasComponent(e, typeof(WorldChunk)))
+        //{
+        //    PostUpdateCommands.AddComponent(e, new CurrentChunkFlag { });
+        //    PostUpdateCommands.RemoveComponent(currentChunkEntity, typeof(CurrentChunkFlag));
+        //    currentChunkEntity = e;
+        //}   
 
     }
 }
