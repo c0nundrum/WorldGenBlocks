@@ -31,12 +31,14 @@ public class BuildChunkJob : JobComponentSystem
         public EntityArchetype archetype;
         [ReadOnly]
         public int chunkSize;
-        [ReadOnly] public CollisionWorld world;
+        [ReadOnly] public CollisionWorld world;       
 
         public EntityCommandBuffer.Concurrent commandBuffer;
 
+        private bool shouldCreate;
         public unsafe void Execute(int index)
         {
+            shouldCreate = true;
             if (positionArray[index].Equals(new int3(int.MinValue, 0 ,0))) return;
 
             float3 chunkPosition = new float3(positionArray[index].x * chunkSize, positionArray[index].y * chunkSize, positionArray[index].z * chunkSize);
@@ -56,7 +58,9 @@ public class BuildChunkJob : JobComponentSystem
 
             bool haveHit = world.CastRay(input, out hit);
 
-            if (!haveHit)
+            NativeArray<BlockType> blockTypeArray = GetBlockArray(chunkPosition);
+
+            if (!haveHit && shouldCreate)
             {
                 int3 position = new int3((int3)math.floor(chunkPosition));
 
@@ -91,7 +95,7 @@ public class BuildChunkJob : JobComponentSystem
                 });
 
                 var buffer = commandBuffer.AddBuffer<BlockTypeBuffer>(index, entity);
-                buffer.Reinterpret<BlockType>().AddRange(GetBlockArray(chunkPosition));
+                buffer.Reinterpret<BlockType>().AddRange(blockTypeArray);
             }
 
         }
@@ -172,8 +176,6 @@ public class BuildChunkJob : JobComponentSystem
                         int worldY = (int)(y + position.y);
                         int worldZ = (int)(z + position.z);
 
-                        float value1 = FBM3D(worldX, worldY, worldZ, 0.1f, 3);
-
                         if (FBM3D(worldX, worldY, worldZ, 0.1f, 3) < 0.48f)
                             blockArray[x + chunkSize * (y + chunkSize * z)] = BlockType.AIR;
                         else if (worldY <= GenerateStoneHeight(worldX, worldZ))
@@ -186,7 +188,11 @@ public class BuildChunkJob : JobComponentSystem
                         else if (worldY < GenerateHeight(worldX, worldZ))
                             blockArray[x + chunkSize * (y + chunkSize * z)] = BlockType.DIRT;
                         else
+                        {
                             blockArray[x + chunkSize * (y + chunkSize * z)] = BlockType.AIR;
+                            shouldCreate = false;
+                        }
+                            
                     }
 
                 }

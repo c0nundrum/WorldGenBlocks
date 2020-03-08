@@ -18,7 +18,7 @@ public class MeshComponents : MonoBehaviour
     public static int columnHeight = 8;
     public readonly static int chunkSize = 8;
     public static int worldSize = 2;
-    public readonly static int radius = 2;
+    public readonly static int radius = 10;
     //public static List<string> toRemove = new List<string>();
 
     public float3 lasbuildPos;
@@ -63,7 +63,7 @@ public class MeshComponents : MonoBehaviour
     {
         Vector3 ppos = Camera.main.transform.position;
 
-        Camera.main.transform.position = new Vector3(ppos.x, Utils.GenerateHeight(ppos.x, ppos.z) + 10, ppos.z);
+        //Camera.main.transform.position = new Vector3(ppos.x, Utils.GenerateHeight(ppos.x, ppos.z) + 10, ppos.z);
 
         lasbuildPos = mainCamera.transform.position;
         firstbuild = true;
@@ -84,7 +84,7 @@ public class MeshComponents : MonoBehaviour
 
         //Build Bigger World
         //StartCoroutine(BuildRecursiveWorld((int)(Camera.main.transform.position.x/chunkSize), (int)(Camera.main.transform.position.y / chunkSize), (int)(Camera.main.transform.position.z / chunkSize), radius));
-        StartCamera();
+        //StartCamera();
         //StartBuildChunks();
         //CreateChunkController();
         StartBuildChunksJob();
