@@ -18,8 +18,9 @@ public class MeshComponents : MonoBehaviour
     public static int columnHeight = 8;
     public readonly static int chunkSize = 8;
     public static int worldSize = 2;
-    public readonly static int radius = 10;
+    public readonly static int radius = 2;
     //public static List<string> toRemove = new List<string>();
+    public Material material;
 
     public float3 lasbuildPos;
 
@@ -36,7 +37,7 @@ public class MeshComponents : MonoBehaviour
         return new int3((int)f.x, (int)f.y, (int)f.z);
     }
 
-    public Material textureAtlas;
+    public static Material textureAtlas;
 
     private EntityArchetype archetype;
     private EntityCommandBuffer entityCommandBuffer;
@@ -49,6 +50,7 @@ public class MeshComponents : MonoBehaviour
 
     private void Awake()
     {
+        textureAtlas = material;
         instance = this;
     }
 
@@ -89,6 +91,7 @@ public class MeshComponents : MonoBehaviour
         //CreateChunkController();
         StartBuildChunksJob();
         StartDeleteChunksJob();
+        StartBuildMesh();
 
 
     }
@@ -141,6 +144,20 @@ public class MeshComponents : MonoBehaviour
         var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
 
         var countSystem = world.GetOrCreateSystem<BuildChunkJob>();
+
+        simulationSystemGroup.AddSystemToUpdateList(countSystem);
+
+        simulationSystemGroup.SortSystemUpdateList();
+
+        ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
+    }
+
+    private void StartBuildMesh()
+    {
+        var world = World.DefaultGameObjectInjectionWorld;
+        var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
+
+        var countSystem = world.GetOrCreateSystem<BuildMeshSystem>();
 
         simulationSystemGroup.AddSystemToUpdateList(countSystem);
 

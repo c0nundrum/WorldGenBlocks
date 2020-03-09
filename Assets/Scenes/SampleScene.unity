@@ -151,11 +151,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   mainCamera: {fileID: 963194227}
+  material: {fileID: 2100000, guid: 33552d14b22375447b2f70022fa120e6, type: 2}
   lasbuildPos:
     x: 0
     y: 0
     z: 0
-  textureAtlas: {fileID: 2100000, guid: 33552d14b22375447b2f70022fa120e6, type: 2}
 --- !u!4 &80604013
 Transform:
   m_ObjectHideFlags: 0
@@ -340,7 +340,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963194225}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 130, y: 0, z: 150}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}

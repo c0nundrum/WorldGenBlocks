@@ -17,3 +17,4 @@ public struct CurrentChunkFlag : IComponentData { };
 public struct DrawChunkFlag : IComponentData { };
 public struct BuildCollisionMeshFlag : IComponentData { };
 public struct DoneChunkFlag : IComponentData { };
+public struct BuildMeshFlag : IComponentData { };

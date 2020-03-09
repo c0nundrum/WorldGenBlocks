@@ -94,6 +94,8 @@ public class BuildChunkJob : JobComponentSystem
                     Value = Unity.Physics.BoxCollider.Create(bm)
                 });
 
+                commandBuffer.AddComponent(index, entity, new BuildMeshFlag { });
+
                 var buffer = commandBuffer.AddBuffer<BlockTypeBuffer>(index, entity);
                 buffer.Reinterpret<BlockType>().AddRange(blockTypeArray);
             }
