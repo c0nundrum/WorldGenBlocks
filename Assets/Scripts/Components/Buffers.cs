@@ -44,3 +44,14 @@ public struct WorldChunksBuffer : IBufferElementData
     // Actual value each buffer element will store.
     public int3 Value;
 }
+
+[InternalBufferCapacity(64)]
+public struct TestBuffer : IBufferElementData
+{
+    // These implicit conversions are optional, but can help reduce typing.
+    public static implicit operator int(TestBuffer e) { return e.Value; }
+    public static implicit operator TestBuffer(int e) { return new TestBuffer { Value = e }; }
+
+    // Actual value each buffer element will store.
+    public int Value;
+}

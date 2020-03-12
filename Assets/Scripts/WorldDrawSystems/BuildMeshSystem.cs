@@ -11,6 +11,57 @@ using Unity.Rendering;
 using Unity.Transforms;
 using RaycastHit = Unity.Physics.RaycastHit;
 
+//public struct EmptyFlag : IComponentData { };
+
+//public class TestSystem : JobComponentSystem
+//{
+//    [BurstCompile]
+//    public struct TestJob : IJob
+//    {
+//        public EntityCommandBuffer commandBuffer;
+//        public EntityArchetype archetype;
+
+//        public void Execute()
+//        {
+//            NativeArray<int> intArray = new NativeArray<int>(64, Allocator.Temp);
+
+//            for (int i = 0; i < intArray.Length; i++)
+//            {
+//                intArray[i] = i;
+//            }
+
+//            Entity e = commandBuffer.CreateEntity(archetype);
+//            var buffer = commandBuffer.AddBuffer<TestBuffer>(e);
+
+//            buffer.Reinterpret<int>().AddRange(intArray);
+//        }
+//    }
+
+//    private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
+
+//    protected override void OnCreate()
+//    {
+//        endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+//        base.OnCreate();
+//    }
+
+//    protected override JobHandle OnUpdate(JobHandle inputDeps)
+//    {
+//        if (Input.GetKeyUp(KeyCode.Space))
+//        {
+//            TestJob testJob = new TestJob
+//            {
+//                archetype = EntityManager.CreateArchetype(typeof(EmptyFlag)),
+//                commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer()
+//            };
+
+//            inputDeps = testJob.Schedule();
+//            endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
+//        }
+//        return inputDeps;
+//    }
+//}
+
 [DisableAutoCreation]
 public class BuildMeshSystem : ComponentSystem
 {
@@ -265,6 +316,8 @@ public class BuildMeshSystem : ComponentSystem
             y = ConvertBlockIndexToLocal(y);
             z = ConvertBlockIndexToLocal(z);
 
+            //Debug.Log(x + ", " + y + ", " + z);
+
             var physicsWorldSystem = World.DefaultGameObjectInjectionWorld.GetExistingSystem<Unity.Physics.Systems.BuildPhysicsWorld>();
             var collisionWorld = physicsWorldSystem.PhysicsWorld.CollisionWorld;
 
@@ -293,6 +346,9 @@ public class BuildMeshSystem : ComponentSystem
                 // see hit.Position
                 // see hit.SurfaceNormal
                 NeighBourentity = physicsWorldSystem.PhysicsWorld.Bodies[hit.RigidBodyIndex].Entity;
+                //var lookup = GetComponentDataFromEntity<WorldChunk>(true);
+                //WorldChunk chunk = lookup[NeighBourentity];
+                //Debug.Log("Hit: " + chunk.position);
             }
             else
             {
@@ -319,7 +375,7 @@ public class BuildMeshSystem : ComponentSystem
         {
             try
             {
-                return ArrayFromChunk[x + MeshComponents.chunkSize * (y + MeshComponents.chunkSize * z)] == BlockType.AIR;
+                return ArrayFromChunk[x + MeshComponents.chunkSize * (y + MeshComponents.chunkSize * z)] != BlockType.AIR;
             }
             catch (System.IndexOutOfRangeException ex) { }
             return false;
@@ -350,39 +406,147 @@ public class BuildMeshSystem : ComponentSystem
         return new int3(x, y, z);
     }
 
+    private EntityArchetype ZeroCube;
+    private RenderMesh SingleCube;
+    private Mesh OriginCube;
+    private bool firstFrame = true;
+
+    private bool CheckForEmptyNeighbour(int3 blockPosition, float3 worldChunkPosition, Entity en)
+    {
+
+        if (!HasSolidNeighbour((int)blockPosition.x, (int)blockPosition.y, (int)blockPosition.z + 1, worldChunkPosition, blockPosition, en))
+            return true;
+        if (!HasSolidNeighbour((int)blockPosition.x, (int)blockPosition.y, (int)blockPosition.z - 1, worldChunkPosition, blockPosition, en))
+            return true;
+        if (!HasSolidNeighbour((int)blockPosition.x, (int)blockPosition.y + 1, (int)blockPosition.z, worldChunkPosition, blockPosition, en))
+            return true;
+        if (!HasSolidNeighbour((int)blockPosition.x, (int)blockPosition.y - 1, (int)blockPosition.z, worldChunkPosition, blockPosition, en))
+            return true;
+        if (!HasSolidNeighbour((int)blockPosition.x - 1, (int)blockPosition.y, (int)blockPosition.z, worldChunkPosition, blockPosition, en))
+            return true;
+        if (!HasSolidNeighbour((int)blockPosition.x + 1, (int)blockPosition.y, (int)blockPosition.z, worldChunkPosition, blockPosition, en))
+            return true;
+
+        return false;
+
+    }
+
+    public Mesh MakeCubeAtZero()
+    {
+
+        List<Mesh> quads = new List<Mesh>();
+
+        BlockType bType = BlockType.DIRT;
+        Vector3 blockPosition = new Vector3(0, 0, 0);
+
+        quads.Add(CreateQuads(Cubeside.FRONT, bType, blockPosition));
+        quads.Add(CreateQuads(Cubeside.BACK, bType, blockPosition));
+        quads.Add(CreateQuads(Cubeside.TOP, bType, blockPosition));
+        quads.Add(CreateQuads(Cubeside.BOTTOM, bType, blockPosition));
+        quads.Add(CreateQuads(Cubeside.LEFT, bType, blockPosition));
+        quads.Add(CreateQuads(Cubeside.RIGHT, bType, blockPosition));
+
+
+        CombineInstance[] array = new CombineInstance[quads.Count];
+
+        for (int i = 0; i < array.Length; i++)
+            array[i].mesh = quads[i];
+
+        Mesh cube = new Mesh();
+        //since our cubes are created on the correct spot already, we dont need a matrix, and so far, no light data
+        cube.CombineMeshes(array, true, false, false);
+        cube.Optimize();
+
+        return cube;
+    }
+
+    private void CreateCubeAt(float3 position)
+    {
+        Entity en = EntityManager.CreateEntity(ZeroCube);
+
+        PostUpdateCommands.SetComponent(en, new Translation { Value = position });
+        PostUpdateCommands.SetComponent(en, new Rotation { Value = quaternion.identity });
+        PostUpdateCommands.SetComponent(en, new LocalToWorld { });
+        PostUpdateCommands.AddSharedComponent(en, SingleCube);
+        PostUpdateCommands.AddComponent(en, new RenderBounds { Value = OriginCube.bounds.ToAABB() });
+        PostUpdateCommands.AddComponent(en, new PerInstanceCullingTag { });
+        PostUpdateCommands.AddComponent(en, new CubeFlag { });
+        
+    }
+
+    private Camera mainCamera;
+
+    protected override void OnCreate()
+    {
+        OriginCube = MakeCubeAtZero();
+        mainCamera = Camera.main;
+
+        base.OnCreate();
+    }
+
     protected override void OnUpdate()
     {
-        var lookupChunk = GetComponentDataFromEntity<WorldChunk>(true);
-        var buffer = GetBufferFromEntity<BlockTypeBuffer>(true);
+        if (firstFrame)
+        {
+            SingleCube = new RenderMesh
+            {
+                mesh = OriginCube,
+                material = MeshComponents.textureAtlas
+            };
+            ZeroCube = EntityManager.CreateArchetype(typeof(Translation), typeof(Rotation), typeof(LocalToWorld));
+            firstFrame = false;
+        }
 
-        Entities.WithAllReadOnly<BuildMeshFlag>().ForEach((Entity en) => {
+        Entities.WithAllReadOnly<BuildMeshFlag>().ForEach((Entity en) =>
+        {
+            var lookupChunk = GetComponentDataFromEntity<WorldChunk>(true);
+            var buffer = GetBufferFromEntity<BlockTypeBuffer>(true);
+
             int3 WorldChunkPosition = lookupChunk[en].position;
             NativeArray<BlockType> blockTypes = buffer[en].Reinterpret<BlockType>().ToNativeArray(Allocator.Temp);
-
-            List<Mesh> chunkMesh = new List<Mesh>();
 
             for (int i = 0; i < blockTypes.Length; i++)
             {
                 if (blockTypes[i] == BlockType.AIR) continue;
-                Mesh _chunkMesh = CreateCube(blockTypes[i], en, GetPositionFromIndex(i), WorldChunkPosition);             
-                chunkMesh.Add(_chunkMesh);
+
+                if(CheckForEmptyNeighbour(GetPositionFromIndex(i), WorldChunkPosition, en))                          
+                    CreateCubeAt(GetPositionFromIndex(i) + WorldChunkPosition);
             }
 
-            CombineInstance[] array = new CombineInstance[chunkMesh.Count];
-
-            for (int i = 0; i < array.Length; i++)
-                array[i].mesh = chunkMesh[i];
-
-            Mesh cube = new Mesh();
-            //since our cubes are created on the correct spot already, we dont need a matrix, and so far, no light data
-            cube.CombineMeshes(array, true, false, false);
-
-            PostUpdateCommands.AddComponent(en, new LocalToWorld { });
-            PostUpdateCommands.AddSharedComponent(en, new RenderMesh { mesh = cube, material = MeshComponents.textureAtlas });
-            PostUpdateCommands.AddComponent(en, new RenderBounds { Value = cube.bounds.ToAABB() });
-            PostUpdateCommands.AddComponent(en, new PerInstanceCullingTag { });
             PostUpdateCommands.RemoveComponent(en, typeof(BuildMeshFlag));
-
         });
+
+        //var lookupChunk = GetComponentDataFromEntity<WorldChunk>(true);
+        //var buffer = GetBufferFromEntity<BlockTypeBuffer>(true);
+
+        //Entities.WithAllReadOnly<BuildMeshFlag>().ForEach((Entity en) => {
+        //    int3 WorldChunkPosition = lookupChunk[en].position;
+        //    NativeArray<BlockType> blockTypes = buffer[en].Reinterpret<BlockType>().ToNativeArray(Allocator.Temp);
+
+        //    List<Mesh> chunkMesh = new List<Mesh>();
+
+        //    for (int i = 0; i < blockTypes.Length; i++)
+        //    {
+        //        if (blockTypes[i] == BlockType.AIR) continue;
+        //        Mesh _chunkMesh = CreateCube(blockTypes[i], en, GetPositionFromIndex(i), WorldChunkPosition);             
+        //        chunkMesh.Add(_chunkMesh);
+        //    }
+
+        //    CombineInstance[] array = new CombineInstance[chunkMesh.Count];
+
+        //    for (int i = 0; i < array.Length; i++)
+        //        array[i].mesh = chunkMesh[i];
+
+        //    Mesh cube = new Mesh();
+        //    //since our cubes are created on the correct spot already, we dont need a matrix, and so far, no light data
+        //    cube.CombineMeshes(array, true, false, false);
+
+        //    PostUpdateCommands.AddComponent(en, new LocalToWorld { });
+        //    PostUpdateCommands.AddSharedComponent(en, new RenderMesh { mesh = cube, material = MeshComponents.textureAtlas });
+        //    PostUpdateCommands.AddComponent(en, new RenderBounds { Value = cube.bounds.ToAABB() });
+        //    PostUpdateCommands.AddComponent(en, new PerInstanceCullingTag { });
+        //    PostUpdateCommands.RemoveComponent(en, typeof(BuildMeshFlag));
+
+        //});
     }
 }

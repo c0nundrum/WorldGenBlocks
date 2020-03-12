@@ -8,7 +8,7 @@ using Unity.Burst;
 using Unity.Physics;
 
 [DisableAutoCreation]
-[UpdateBefore(typeof(Drawchunk))]
+[UpdateBefore(typeof(BuildMeshSystem))]
 public class BuildChunkJob : JobComponentSystem
 {
     private Camera mainCamera;
@@ -26,7 +26,8 @@ public class BuildChunkJob : JobComponentSystem
     private struct BuildChunkAt : IJobParallelFor
     {
         [ReadOnly]
-        [DeallocateOnJobCompletion]public NativeArray<int3> positionArray;
+        [DeallocateOnJobCompletion]
+        public NativeArray<int3> positionArray;
         [ReadOnly]
         public EntityArchetype archetype;
         [ReadOnly]
@@ -48,6 +49,8 @@ public class BuildChunkJob : JobComponentSystem
             //Need to set up collision layers properly
             RaycastInput input = new RaycastInput()
             {
+                Start = chunkPosition,
+                End = chunkPosition,
                 Filter = new CollisionFilter()
                 {
                     BelongsTo = ~0u,
@@ -84,7 +87,8 @@ public class BuildChunkJob : JobComponentSystem
                 BoxGeometry bm = new BoxGeometry
                 {
                     BevelRadius = 0f,
-                    Center = float3.zero,
+                    //Center = float3.zero,
+                    Center = new float3(chunkSize / 2 - 0.5f, chunkSize / 2 - 0.5f, chunkSize / 2 - 0.5f),
                     Orientation = quaternion.identity,
                     Size = new float3(chunkSize)
                 };
@@ -179,7 +183,10 @@ public class BuildChunkJob : JobComponentSystem
                         int worldZ = (int)(z + position.z);
 
                         if (FBM3D(worldX, worldY, worldZ, 0.1f, 3) < 0.48f)
+                        {
                             blockArray[x + chunkSize * (y + chunkSize * z)] = BlockType.AIR;
+                            //shouldCreate = false;
+                        }                            
                         else if (worldY <= GenerateStoneHeight(worldX, worldZ))
                             if (FBM3D(worldX, worldY, worldZ, 0.01f, 2) < 0.38f && worldY < 40)
                                 blockArray[x + chunkSize * (y + chunkSize * z)] = BlockType.DIAMOND;
@@ -203,6 +210,54 @@ public class BuildChunkJob : JobComponentSystem
             return blockArray;
         }
     }
+
+    //REEEALLY SLOW
+    [BurstCompile]
+    private struct FloodFill : IJob
+    {
+        [WriteOnly]
+        public NativeList<int3> positionList;
+
+        [ReadOnly]
+        public int3 cameraPosition;
+        [ReadOnly]
+        public int Radius;
+
+        public void Execute()
+        {
+            addList(cameraPosition.x, cameraPosition.y, cameraPosition.x, Radius);
+        }
+
+        private void addList(int x, int y, int z, int rad)
+        {
+            rad--;
+            if (rad <= 0) return;
+
+            //Build Chunk Front
+            positionList.Add(new int3(x, y, z + 1));
+            addList(x, y, z + 1, rad);
+
+            //Build Chunk Back
+            positionList.Add(new int3(x, y, z - 1));
+            addList(x, y, z - 1, rad);
+
+            //Build Chunk left
+            positionList.Add(new int3(x - 1, y, z));
+            addList(x - 1, y, z, rad);
+
+            //Build Chunk right
+            positionList.Add(new int3(x + 1, y, z));
+            addList(x + 1, y, z, rad);
+
+            //Build Chunk up
+            positionList.Add(new int3(x, y + 1, z));
+            addList(x, y + 1, z, rad);
+
+            //Build Chunk Down
+            positionList.Add(new int3(x, y - 1, z));
+            addList(x, y - 1, z, rad);
+        }
+    };
 
     [BurstCompile]
     private struct GetPositionList : IJobParallelFor
@@ -351,6 +406,19 @@ public class BuildChunkJob : JobComponentSystem
 
         var ensureUniqueJobHandle = ensureUniqueJob.Schedule(combineArrayJob);
 
+        //NativeList<int3> PositionUniqueArray = new NativeList<int3>(Allocator.TempJob);
+
+        //FloodFill floodFillJob = new FloodFill
+        //{
+        //    cameraPosition = new int3(x, y, z),
+        //    positionList = PositionUniqueArray,
+        //    Radius = MeshComponents.radius
+        //};
+
+        //var floodFillJobHandle = floodFillJob.Schedule();
+
+        //floodFillJobHandle.Complete();
+
         physicsWorldSystem = World.DefaultGameObjectInjectionWorld.GetExistingSystem<Unity.Physics.Systems.BuildPhysicsWorld>();
 
         BuildChunkAt job = new BuildChunkAt
@@ -363,10 +431,13 @@ public class BuildChunkJob : JobComponentSystem
         };
 
         var handle = job.Schedule(PositionUniqueArray.Length, 8, ensureUniqueJobHandle);
+        //var handle = job.Schedule(PositionUniqueArray.Length, 8, floodFillJobHandle);
 
         handle.Complete();
+        //PositionUniqueArray.Dispose();
 
         return ensureUniqueJobHandle;
+        //return floodFillJobHandle;
     }
 
     public JobHandle BuildNearPlayer()
@@ -399,6 +470,7 @@ public class BuildChunkJob : JobComponentSystem
 
     protected override JobHandle OnUpdate(JobHandle inputDeps)
     {
+
         float3 movement = lastbuildPos - new float3(mainCamera.transform.position);
 
         if (math.length(movement) > MeshComponents.chunkSize * bufferSize)

@@ -89,9 +89,11 @@ public class MeshComponents : MonoBehaviour
         //StartCamera();
         //StartBuildChunks();
         //CreateChunkController();
+        StartBuildMesh();
         StartBuildChunksJob();
         StartDeleteChunksJob();
-        StartBuildMesh();
+        StartDeleteCubesJob();
+
 
 
     }
@@ -172,6 +174,20 @@ public class MeshComponents : MonoBehaviour
         var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
 
         var countSystem = world.GetOrCreateSystem<DeleteChunks>();
+
+        simulationSystemGroup.AddSystemToUpdateList(countSystem);
+
+        simulationSystemGroup.SortSystemUpdateList();
+
+        ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
+    }
+
+    private void StartDeleteCubesJob()
+    {
+        var world = World.DefaultGameObjectInjectionWorld;
+        var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
+
+        var countSystem = world.GetOrCreateSystem<DeleteCubes>();
 
         simulationSystemGroup.AddSystemToUpdateList(countSystem);
 
