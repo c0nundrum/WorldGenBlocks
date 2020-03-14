@@ -18,7 +18,7 @@ public class MeshComponents : MonoBehaviour
     public static int columnHeight = 8;
     public readonly static int chunkSize = 8;
     public static int worldSize = 2;
-    public readonly static int radius = 2;
+    public readonly static int radius = 4;
     //public static List<string> toRemove = new List<string>();
     public Material material;
 
@@ -90,7 +90,8 @@ public class MeshComponents : MonoBehaviour
         //StartBuildChunks();
         //CreateChunkController();
         StartBuildMesh();
-        StartBuildChunksJob();
+        StartBuildMegaChunksJob();
+        //StartBuildCubesJob();
         StartDeleteChunksJob();
         StartDeleteCubesJob();
 
@@ -140,12 +141,40 @@ public class MeshComponents : MonoBehaviour
         ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
     }
 
+    private void StartBuildMegaChunksJob()
+    {
+        var world = World.DefaultGameObjectInjectionWorld;
+        var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
+
+        var countSystem = world.GetOrCreateSystem<BuildMegaChunk>();
+
+        simulationSystemGroup.AddSystemToUpdateList(countSystem);
+
+        simulationSystemGroup.SortSystemUpdateList();
+
+        ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
+    }
+
     private void StartBuildChunksJob()
     {
         var world = World.DefaultGameObjectInjectionWorld;
         var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
 
         var countSystem = world.GetOrCreateSystem<BuildChunkJob>();
+
+        simulationSystemGroup.AddSystemToUpdateList(countSystem);
+
+        simulationSystemGroup.SortSystemUpdateList();
+
+        ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
+    }
+
+    private void StartBuildCubesJob()
+    {
+        var world = World.DefaultGameObjectInjectionWorld;
+        var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
+
+        var countSystem = world.GetOrCreateSystem<BuildCubeJob>();
 
         simulationSystemGroup.AddSystemToUpdateList(countSystem);
 

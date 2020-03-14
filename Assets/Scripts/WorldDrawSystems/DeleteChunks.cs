@@ -50,17 +50,23 @@ public class DeleteCubes : JobComponentSystem
 
     protected override JobHandle OnUpdate(JobHandle inputDeps)
     {
-        DeletingQueue deletingQueueJob = new DeletingQueue
+        float3 movement = lastbuildPos - new float3(mainCamera.transform.position);
+
+        if (math.length(movement) > MeshComponents.radius * MeshComponents.chunkSize * bufferSize)
         {
-            cameraPosition = mainCamera.transform.position,
-            chunkSize = MeshComponents.chunkSize,
-            radius = MeshComponents.radius,
-            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent()
-        };
+            lastbuildPos = mainCamera.transform.position;
+            DeletingQueue deletingQueueJob = new DeletingQueue
+            {
+                cameraPosition = mainCamera.transform.position,
+                chunkSize = MeshComponents.chunkSize,
+                radius = MeshComponents.radius,
+                commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent()
+            };
 
-        inputDeps = deletingQueueJob.Schedule(this);
+            inputDeps = deletingQueueJob.Schedule(this);
 
-        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
+            endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
+        }
 
         return inputDeps;
     }

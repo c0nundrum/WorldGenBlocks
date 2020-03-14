@@ -6,6 +6,300 @@ using Unity.Mathematics;
 using Unity.Transforms;
 using Unity.Burst;
 using Unity.Physics;
+using System.Collections.Generic;
+
+[DisableAutoCreation]
+public class BuildMegaChunk : JobComponentSystem
+{
+    private EntityArchetype archetype;
+    private Camera mainCamera;
+
+    private void BuildMegaChunkAt(float3 position, int chunkSize) {
+
+        Entity en = EntityManager.CreateEntity(archetype);
+        EntityManager.SetComponentData(en, new MegaChunk { center = new float3(position.x * chunkSize, position.y * chunkSize, position.z * chunkSize), spawnCubes = true });
+
+    }
+
+    private void BuildInitialCube(float3 position, int chunkSize, int radius)
+    {
+        int diameter =  (int)math.floor(radius / 2);
+
+        for (int x = (int)math.floor(position.x - diameter); x < (int)math.floor(position.x + diameter); x++)
+            for (int y = (int)math.floor(position.y - diameter); y < (int)math.floor(position.y + diameter); y++)
+                for (int z = (int)math.floor(position.z - diameter); z < (int)math.floor(position.z + diameter); z++)
+                    BuildMegaChunkAt(new int3(x, y, z), MeshComponents.chunkSize);
+    }
+
+    protected override void OnCreate()
+    {
+        mainCamera = Camera.main;
+        base.OnCreate();
+    }
+
+    protected override void OnDestroy()
+    {
+        base.OnDestroy();
+    }
+
+    protected override void OnStartRunning()
+    {
+        base.OnStartRunning();
+        archetype = EntityManager.CreateArchetype(typeof(MegaChunk));
+
+        BuildInitialCube(new int3((int)mainCamera.transform.position.x / MeshComponents.chunkSize, 
+            (int)mainCamera.transform.position.y / MeshComponents.chunkSize, 
+            (int)mainCamera.transform.position.z / MeshComponents.chunkSize), MeshComponents.chunkSize, MeshComponents.radius);
+        
+    }
+
+    protected override JobHandle OnUpdate(JobHandle inputDeps)
+    {
+        return inputDeps;
+    }
+}
+
+public class FillChunks : JobComponentSystem
+{
+    private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
+    private EntityArchetype archetype;
+
+    public struct SpawnCubes : IJobForEachWithEntity<MegaChunk>
+    {
+        [ReadOnly]
+        public EntityArchetype archetype;
+        [ReadOnly]
+        public int chunk;
+
+        public EntityCommandBuffer.Concurrent commandBuffer;
+
+        public void Execute(Entity en, int index, ref MegaChunk megaChunk)
+        {
+            if (megaChunk.spawnCubes)
+            {
+                BuildChunkCubes(megaChunk.center, index, chunk);
+
+                megaChunk.spawnCubes = false;
+            }
+        }
+
+        private void BuildChunkCubes(float3 position, int index, int chunkSize)
+        {
+            int diameter = (int)math.floor(chunkSize / 2);
+
+            for (int x = (int)math.floor(position.x - diameter); x < (int)math.floor(position.x + diameter); x++)
+                for (int y = (int)math.floor(position.y - diameter); y < (int)math.floor(position.y + diameter); y++)
+                    for (int z = (int)math.floor(position.z - diameter); z < (int)math.floor(position.z + diameter); z++)
+                        BuildCubeAt(new int3(x, y, z), index);
+        }
+
+        private void BuildCubeAt(float3 position, int index)
+        {
+
+            Entity en = commandBuffer.CreateEntity(index, archetype);
+            commandBuffer.SetComponent(index, en, new CubePosition { position = position, type = BlockType.DIRT, HasCube = false } );
+
+        }
+
+    }
+
+    protected override void OnStartRunning()
+    {
+        base.OnStartRunning();
+        archetype = EntityManager.CreateArchetype(typeof(CubePosition));
+    }
+
+    protected override void OnCreate()
+    {
+
+        endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+
+        base.OnCreate();
+    }
+
+    protected override JobHandle OnUpdate(JobHandle inputDeps)
+    {
+        SpawnCubes spawncubesJob = new SpawnCubes
+        {
+            archetype = archetype,
+            chunk = MeshComponents.chunkSize,
+            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent()
+        };
+
+        inputDeps = spawncubesJob.Schedule(this, inputDeps);
+
+        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
+
+        return inputDeps;
+    }
+}
+
+[DisableAutoCreation]
+public class BuildCubeJob : JobComponentSystem
+{
+    private NativeArray<int3> PositionsOffset;
+    private NativeList<int3> arrayList;
+
+    private EntityQuery m_Group;
+
+    private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
+    private Camera mainCamera;
+
+    private EntityArchetype archetype;
+
+    private float3 lastbuildPos;
+
+    private readonly int bufferSize = 1;
+
+    [BurstCompile]
+    private struct CreateCubes : IJobParallelFor
+    {
+        [ReadOnly]
+        public NativeArray<int3> PositionsOffset;
+        [ReadOnly]
+        public float3 translation;
+        [ReadOnly]
+        public int radius;
+        [ReadOnly]
+        public int chunkSize;
+        [ReadOnly]
+        public EntityArchetype archetype;
+
+        public EntityCommandBuffer.Concurrent commandBuffer;
+
+        public void Execute(int index)
+        {
+            //if (!cubePositions.Contains(new int3(PositionsOffset[index] + math.floor(translation))) && math.distance(PositionsOffset[index] + translation, translation) < radius * chunkSize)
+            if (math.distance(PositionsOffset[index] + translation, translation) < radius * chunkSize)
+            {
+                Entity en = commandBuffer.CreateEntity(index, archetype);
+                commandBuffer.SetComponent(index, en, new CubePosition { position = PositionsOffset[index] + math.floor(translation), type = BlockType.DIRT, HasCube = false });
+            }
+                
+        }
+
+        private float3 GetStartOffset(float3 position, int radius)
+        {
+            int offsetRadius = radius / 2;
+            return new float3(position.x - offsetRadius, position.y - offsetRadius, position.z - offsetRadius);
+        }
+
+    }
+
+    private struct GetPositionArray : IJobParallelFor
+    {
+        [ReadOnly]
+        [DeallocateOnJobCompletion]public NativeArray<CubePosition> cubePositions;
+        [WriteOnly]
+        public NativeArray<int3> occupiedPositions;
+
+        public void Execute(int index)
+        {
+            occupiedPositions[index] = new int3(math.floor(cubePositions[index].position));
+        }
+    }
+
+    private void BuildRecursiveWorld(int x, int y, int z, int rad)
+    {
+        rad--;
+        if (rad <= 0) return;
+
+        //Build Chunk Front
+        arrayList.Add(new int3(x, y, z + 1));
+        BuildRecursiveWorld(x, y, z + 1, rad);
+
+        //Build Chunk Back
+        arrayList.Add(new int3(x, y, z - 1));
+        BuildRecursiveWorld(x, y, z - 1, rad);
+
+        //Build Chunk left
+        arrayList.Add(new int3(x - 1, y, z));
+        BuildRecursiveWorld(x - 1, y, z, rad);
+
+        //Build Chunk right
+        arrayList.Add(new int3(x + 1, y, z));
+        BuildRecursiveWorld(x + 1, y, z, rad);
+
+        //Build Chunk up
+        arrayList.Add(new int3(x, y + 1, z));
+        BuildRecursiveWorld(x, y + 1, z, rad);
+
+        //Build Chunk Down
+        arrayList.Add(new int3(x, y - 1, z));
+        BuildRecursiveWorld(x, y - 1, z, rad);
+
+    }
+
+    private int3[] CreateOffsetArray()
+    {
+
+        int3[] arrayOffset = new int3[(int)math.pow(MeshComponents.radius, 3)];
+        
+        for (int x = 0; x < MeshComponents.radius; x++)
+            for (int y = 0; y < MeshComponents.radius; y++)
+                for (int z = 0; z < MeshComponents.radius; z++)
+                    arrayOffset[x + MeshComponents.radius * (y + MeshComponents.radius * z)] = new int3(x, y, z);
+
+        return arrayOffset;
+    }
+
+    protected override void OnCreate()
+    {
+
+        arrayList = new NativeList<int3>(Allocator.Persistent);
+        BuildRecursiveWorld(0, 0, 0, MeshComponents.radius);
+        PositionsOffset = new NativeArray<int3>(arrayList.ToArray(), Allocator.Persistent);
+
+        arrayList.Dispose();
+
+        mainCamera = Camera.main;
+        endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+
+        lastbuildPos = mainCamera.transform.position;
+
+        base.OnCreate();
+    }
+
+    protected override void OnStartRunning()
+    {
+        base.OnStartRunning();
+        archetype = EntityManager.CreateArchetype(typeof(CubePosition));
+    }
+
+    protected override void OnDestroy()
+    {
+        PositionsOffset.Dispose();
+        base.OnDestroy();
+    }
+
+    protected override JobHandle OnUpdate(JobHandle inputDeps)
+    {
+
+        float3 movement = lastbuildPos - new float3(mainCamera.transform.position);
+
+        //if (math.length(movement) > MeshComponents.radius * bufferSize)
+        if (math.length(movement) > MeshComponents.radius * MeshComponents.chunkSize * bufferSize)
+        {
+            lastbuildPos = mainCamera.transform.position;
+
+            CreateCubes cubeJob = new CreateCubes
+            {
+                translation = mainCamera.transform.position,
+                chunkSize = MeshComponents.chunkSize,
+                radius = MeshComponents.radius,
+                commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
+                archetype = archetype,
+                PositionsOffset = PositionsOffset
+            };
+
+            inputDeps = cubeJob.Schedule(PositionsOffset.Length, 16, inputDeps);
+
+            endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
+        }
+
+        return inputDeps;
+    }
+}
 
 [DisableAutoCreation]
 [UpdateBefore(typeof(BuildMeshSystem))]

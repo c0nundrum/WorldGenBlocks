@@ -486,7 +486,7 @@ public class BuildMeshSystem : ComponentSystem
 
     protected override void OnUpdate()
     {
-        if (firstFrame)
+        if (firstFrame) // move this to on start running
         {
             SingleCube = new RenderMesh
             {
@@ -497,24 +497,35 @@ public class BuildMeshSystem : ComponentSystem
             firstFrame = false;
         }
 
-        Entities.WithAllReadOnly<BuildMeshFlag>().ForEach((Entity en) =>
+        Entities.WithAllReadOnly<CubePosition>().ForEach((Entity en, ref CubePosition position) =>
         {
-            var lookupChunk = GetComponentDataFromEntity<WorldChunk>(true);
-            var buffer = GetBufferFromEntity<BlockTypeBuffer>(true);
 
-            int3 WorldChunkPosition = lookupChunk[en].position;
-            NativeArray<BlockType> blockTypes = buffer[en].Reinterpret<BlockType>().ToNativeArray(Allocator.Temp);
-
-            for (int i = 0; i < blockTypes.Length; i++)
+            if (position.type != BlockType.AIR && !position.HasCube)
             {
-                if (blockTypes[i] == BlockType.AIR) continue;
-
-                if(CheckForEmptyNeighbour(GetPositionFromIndex(i), WorldChunkPosition, en))                          
-                    CreateCubeAt(GetPositionFromIndex(i) + WorldChunkPosition);
+                position.HasCube = true;
+                CreateCubeAt(position.position);
             }
-
-            PostUpdateCommands.RemoveComponent(en, typeof(BuildMeshFlag));
+          
         });
+
+        //Entities.WithAllReadOnly<BuildMeshFlag>().ForEach((Entity en) =>
+        //{
+        //    var lookupChunk = GetComponentDataFromEntity<WorldChunk>(true);
+        //    var buffer = GetBufferFromEntity<BlockTypeBuffer>(true);
+
+        //    int3 WorldChunkPosition = lookupChunk[en].position;
+        //    NativeArray<BlockType> blockTypes = buffer[en].Reinterpret<BlockType>().ToNativeArray(Allocator.Temp);
+
+        //    for (int i = 0; i < blockTypes.Length; i++)
+        //    {
+        //        if (blockTypes[i] == BlockType.AIR) continue;
+
+        //        if(CheckForEmptyNeighbour(GetPositionFromIndex(i), WorldChunkPosition, en))                          
+        //            CreateCubeAt(GetPositionFromIndex(i) + WorldChunkPosition);
+        //    }
+
+        //    PostUpdateCommands.RemoveComponent(en, typeof(BuildMeshFlag));
+        //});
 
         //var lookupChunk = GetComponentDataFromEntity<WorldChunk>(true);
         //var buffer = GetBufferFromEntity<BlockTypeBuffer>(true);

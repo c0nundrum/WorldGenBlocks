@@ -19,3 +19,14 @@ public struct BuildCollisionMeshFlag : IComponentData { };
 public struct DoneChunkFlag : IComponentData { };
 public struct BuildMeshFlag : IComponentData { };
 public struct CubeFlag : IComponentData { };
+
+public struct CubePosition : IComponentData {
+    public float3 position;
+    public BlockType type;
+    public bool HasCube;
+};
+
+public struct MegaChunk : IComponentData {
+    public float3 center;
+    public bool spawnCubes;
+}
