@@ -64,6 +64,7 @@ public class FillChunks : JobComponentSystem
     private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
     private EntityArchetype archetype;
 
+    [BurstCompile]
     public struct SpawnCubes : IJobForEachWithEntity<MegaChunk>
     {
         [ReadOnly]
@@ -90,7 +91,81 @@ public class FillChunks : JobComponentSystem
             for (int x = (int)math.floor(position.x - diameter); x < (int)math.floor(position.x + diameter); x++)
                 for (int y = (int)math.floor(position.y - diameter); y < (int)math.floor(position.y + diameter); y++)
                     for (int z = (int)math.floor(position.z - diameter); z < (int)math.floor(position.z + diameter); z++)
-                        BuildCubeAt(new int3(x, y, z), index);
+                        if(GetBlock(new float3(x, y, z)) != BlockType.AIR && ShouldDraw(new float3(x, y, z)))
+                            BuildCubeAt(new int3(x, y, z), index);
+        }
+
+        private bool ShouldDraw(float3 position)
+        {
+            if (GetBlock(new float3(position.x, position.y, position.z + 1)) == BlockType.AIR || GetBlock(new float3(position.x, position.y, position.z - 1)) == BlockType.AIR)
+                return true;
+            if (GetBlock(new float3(position.x, position.y + 1, position.z)) == BlockType.AIR || GetBlock(new float3(position.x, position.y - 1, position.z)) == BlockType.AIR)
+                return true;
+            if (GetBlock(new float3(position.x + 1, position.y, position.z)) == BlockType.AIR || GetBlock(new float3(position.x - 1, position.y, position.z)) == BlockType.AIR)
+                return true;
+
+            return false;
+        }
+
+        private float Map(float newmin, float newmax, float originalMin, float originalMax, float value)
+        {
+            return math.lerp(newmin, newmax, math.unlerp(originalMin, originalMax, value));
+        }
+
+        private int GenerateHeight(float x, float z)
+        {
+            int maxHeight = 150;
+            float smooth = 0.01f;
+            int octaves = 4;
+            float persistence = 0.5f;
+            //Parameters should come in from the chunk
+            float height = Map(0, maxHeight, 0, 1, FBM(x * smooth, z * smooth, octaves, persistence));
+            return (int)height;
+        }
+
+        private int GenerateStoneHeight(float x, float z)
+        {
+            int maxHeight = 150;
+            float smooth = 0.01f;
+            int octaves = 4;
+            float persistence = 0.5f;
+            //Parameters should come in from the chunk
+            float height = Map(0, maxHeight - 5, 0, 1, FBM(x * smooth * 2, z * smooth * 2, octaves + 1, persistence));
+            return (int)height;
+        }
+
+        private float FBM(float x, float z, int oct, float pers)
+        {
+            float total = 0;
+            float frequency = 1;
+            float amplitude = 1;
+            float maxValue = 0;
+            float offset = 32000f;
+
+            for (int i = 0; i < oct; i++)
+            {
+                total += noise.cnoise(new float2(x + offset * frequency, z + offset * frequency)) * amplitude;
+
+                maxValue += amplitude;
+
+                amplitude *= pers;
+                frequency *= 2;
+            }
+
+            return total / maxValue;
+        }
+
+        private float FBM3D(float x, float y, float z, float sm, int oct)
+        {
+            float XY = FBM(x * sm, y * sm, oct, 0.5f);
+            float YZ = FBM(y * sm, z * sm, oct, 0.5f);
+            float XZ = FBM(x * sm, z * sm, oct, 0.5f);
+
+            float YX = FBM(y * sm, x * sm, oct, 0.5f);
+            float ZY = FBM(z * sm, y * sm, oct, 0.5f);
+            float ZX = FBM(z * sm, x * sm, oct, 0.5f);
+
+            return math.unlerp(-1, 1, ((XY + YZ + XZ + YX + ZY + ZX) / 6.0f));
         }
 
         private void BuildCubeAt(float3 position, int index)
@@ -99,6 +174,37 @@ public class FillChunks : JobComponentSystem
             Entity en = commandBuffer.CreateEntity(index, archetype);
             commandBuffer.SetComponent(index, en, new CubePosition { position = position, type = BlockType.DIRT, HasCube = false } );
 
+        }
+
+        private BlockType GetBlock(float3 position)
+        {
+
+            BlockType block;
+                              
+            int worldX = (int)(position.x);
+            int worldY = (int)(position.y);
+            int worldZ = (int)(position.z);
+
+            if (FBM3D(worldX, worldY, worldZ, 0.1f, 3) < 0.48f)
+            {
+                block = BlockType.AIR;
+                //shouldCreate = false;
+            }
+            else if (worldY <= GenerateStoneHeight(worldX, worldZ))
+                if (FBM3D(worldX, worldY, worldZ, 0.01f, 2) < 0.38f && worldY < 40)
+                    block = BlockType.DIAMOND;
+                else
+                    block = BlockType.STONE;
+            else if (worldY == GenerateHeight(worldX, worldZ))
+                block = BlockType.GRASS;
+            else if (worldY < GenerateHeight(worldX, worldZ))
+                block = BlockType.DIRT;
+            else
+            {
+                block = BlockType.AIR;            
+            }
+
+            return block;
         }
 
     }

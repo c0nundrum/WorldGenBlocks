@@ -460,18 +460,25 @@ public class BuildMeshSystem : ComponentSystem
         return cube;
     }
 
-    private void CreateCubeAt(float3 position)
+    private void CreateCubeAt(float3 position, Entity en)
     {
-        Entity en = EntityManager.CreateEntity(ZeroCube);
+        //Entity en = EntityManager.CreateEntity(ZeroCube);
 
-        PostUpdateCommands.SetComponent(en, new Translation { Value = position });
-        PostUpdateCommands.SetComponent(en, new Rotation { Value = quaternion.identity });
-        PostUpdateCommands.SetComponent(en, new LocalToWorld { });
+        //PostUpdateCommands.SetComponent(en, new Translation { Value = position });
+        //PostUpdateCommands.SetComponent(en, new Rotation { Value = quaternion.identity });
+        //PostUpdateCommands.SetComponent(en, new LocalToWorld { });
+        //PostUpdateCommands.AddSharedComponent(en, SingleCube);
+        //PostUpdateCommands.AddComponent(en, new RenderBounds { Value = OriginCube.bounds.ToAABB() });
+        //PostUpdateCommands.AddComponent(en, new PerInstanceCullingTag { });
+        //PostUpdateCommands.AddComponent(en, new CubeFlag { });
+
+        PostUpdateCommands.AddComponent(en, new Translation { Value = position });
+        PostUpdateCommands.AddComponent(en, new Rotation { Value = quaternion.identity });
+        PostUpdateCommands.AddComponent(en, new LocalToWorld { });
         PostUpdateCommands.AddSharedComponent(en, SingleCube);
         PostUpdateCommands.AddComponent(en, new RenderBounds { Value = OriginCube.bounds.ToAABB() });
         PostUpdateCommands.AddComponent(en, new PerInstanceCullingTag { });
-        PostUpdateCommands.AddComponent(en, new CubeFlag { });
-        
+
     }
 
     private Camera mainCamera;
@@ -497,13 +504,13 @@ public class BuildMeshSystem : ComponentSystem
             firstFrame = false;
         }
 
-        Entities.WithAllReadOnly<CubePosition>().ForEach((Entity en, ref CubePosition position) =>
+        Entities.WithNone<RenderMesh>().WithAllReadOnly<CubePosition>().ForEach((Entity en, ref CubePosition position) =>
         {
 
             if (position.type != BlockType.AIR && !position.HasCube)
             {
                 position.HasCube = true;
-                CreateCubeAt(position.position);
+                CreateCubeAt(position.position, en);
             }
           
         });

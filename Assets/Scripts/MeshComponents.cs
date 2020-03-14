@@ -92,8 +92,8 @@ public class MeshComponents : MonoBehaviour
         StartBuildMesh();
         StartBuildMegaChunksJob();
         //StartBuildCubesJob();
-        StartDeleteChunksJob();
-        StartDeleteCubesJob();
+        //StartDeleteChunksJob();
+        //StartDeleteCubesJob();
 
 
 
