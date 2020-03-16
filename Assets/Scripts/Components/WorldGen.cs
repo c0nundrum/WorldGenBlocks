@@ -30,3 +30,9 @@ public struct MegaChunk : IComponentData {
     public float3 center;
     public bool spawnCubes;
 }
+
+public struct MoveChunkEvent : IComponentData
+{
+    public Entity megaChunk;
+    public float3 originalPosition;
+}

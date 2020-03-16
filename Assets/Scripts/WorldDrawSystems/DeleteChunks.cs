@@ -9,6 +9,72 @@ using Unity.Burst;
 using Unity.Transforms;
 
 [DisableAutoCreation]
+[UpdateBefore(typeof(BuildMegaChunk))]
+public class DeleteMegaChunk : JobComponentSystem
+{
+    private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
+    private Camera mainCamera;
+
+    private float3 lastbuildPos;
+
+    private struct DeleteMegaChunkJob : IJobForEachWithEntity<MegaChunk>
+    {
+        [ReadOnly]
+        public float3 cameraPosition;
+        [ReadOnly]
+        public int radius;
+        [ReadOnly]
+        public int chunkSize;
+        [ReadOnly]
+        public BufferFromEntity<Child> lookup;
+
+        public EntityCommandBuffer.Concurrent commandBuffer;
+
+        public void Execute(Entity entity, int index, ref MegaChunk megaChunk)
+        {
+            if (math.distance(cameraPosition, megaChunk.center) > radius * chunkSize)
+            {
+                commandBuffer.DestroyEntity(index, entity);
+            }
+                
+        }
+    }
+
+    protected override void OnCreate()
+    {
+        mainCamera = Camera.main;
+        endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+
+        lastbuildPos = mainCamera.transform.position;
+
+        base.OnCreate();
+    }
+
+    protected override JobHandle OnUpdate(JobHandle inputDeps)
+    {
+        float3 movement = lastbuildPos - new float3(mainCamera.transform.position);
+
+        if (math.length(movement) > MeshComponents.chunkSize)
+        {
+            lastbuildPos = mainCamera.transform.position;
+            DeleteMegaChunkJob deletingQueueJob = new DeleteMegaChunkJob
+            {
+                cameraPosition = mainCamera.transform.position,
+                chunkSize = MeshComponents.chunkSize,
+                radius = MeshComponents.radius,
+                commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent()
+            };
+
+            inputDeps = deletingQueueJob.Schedule(this, inputDeps);
+
+            endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
+        }
+
+        return inputDeps;
+    }
+}
+
+[DisableAutoCreation]
 public class DeleteCubes : JobComponentSystem
 {
     private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;

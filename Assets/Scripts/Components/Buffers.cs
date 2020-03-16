@@ -1,6 +1,18 @@
 ﻿using Unity.Entities;
 using Unity.Mathematics;
 
+
+[InternalBufferCapacity(512)]
+public struct EntitiesBuffer : IBufferElementData
+{
+    // These implicit conversions are optional, but can help reduce typing.
+    public static implicit operator Entity(EntitiesBuffer e) { return e.Value; }
+    public static implicit operator EntitiesBuffer(Entity e) { return new EntitiesBuffer { Value = e }; }
+
+    // Actual value each buffer element will store.
+    public Entity Value;
+}
+
 [InternalBufferCapacity(64)]
 public struct VerticesBuffer : IBufferElementData
 {

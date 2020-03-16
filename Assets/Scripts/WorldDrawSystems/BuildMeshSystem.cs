@@ -460,7 +460,7 @@ public class BuildMeshSystem : ComponentSystem
         return cube;
     }
 
-    private void CreateCubeAt(float3 position, Entity en)
+    private void CreateCubeAt(float3 position, Entity en, Entity parent)
     {
         //Entity en = EntityManager.CreateEntity(ZeroCube);
 
@@ -478,6 +478,7 @@ public class BuildMeshSystem : ComponentSystem
         PostUpdateCommands.AddSharedComponent(en, SingleCube);
         PostUpdateCommands.AddComponent(en, new RenderBounds { Value = OriginCube.bounds.ToAABB() });
         PostUpdateCommands.AddComponent(en, new PerInstanceCullingTag { });
+        PostUpdateCommands.AddComponent(en, new LocalToParent { });
 
     }
 
@@ -504,13 +505,13 @@ public class BuildMeshSystem : ComponentSystem
             firstFrame = false;
         }
 
-        Entities.WithNone<RenderMesh>().WithAllReadOnly<CubePosition>().ForEach((Entity en, ref CubePosition position) =>
+        Entities.WithNone<RenderMesh>().WithAllReadOnly<CubePosition, Parent>().ForEach((Entity en, ref CubePosition position, ref Parent parent) =>
         {
 
             if (position.type != BlockType.AIR && !position.HasCube)
             {
                 position.HasCube = true;
-                CreateCubeAt(position.position, en);
+                CreateCubeAt(position.position, en, parent.Value);
             }
           
         });

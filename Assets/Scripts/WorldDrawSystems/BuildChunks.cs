@@ -6,7 +6,27 @@ using Unity.Mathematics;
 using Unity.Transforms;
 using Unity.Burst;
 using Unity.Physics;
-using System.Collections.Generic;
+using RaycastHit = Unity.Physics.RaycastHit;
+
+//public class MoveMegaChunk : JobComponentSystem
+//{
+//    //[BurstCompile] //Burst makes this slower?!
+//    [RequireComponentTag(typeof(MegaChunk))]
+//    public struct MoveChunksTest : IJobForEach<Translation>
+//    {
+//        public float DeltaTime;
+
+//        public void Execute(ref Translation translation)
+//        {
+//            translation.Value += 1 * DeltaTime;
+//        }
+//    }
+
+//    protected override JobHandle OnUpdate(JobHandle inputDeps)
+//    {
+//        return new MoveChunksTest { DeltaTime = Time.DeltaTime }.Schedule(this, inputDeps);
+//    }
+//}
 
 [DisableAutoCreation]
 public class BuildMegaChunk : JobComponentSystem
@@ -14,11 +34,63 @@ public class BuildMegaChunk : JobComponentSystem
     private EntityArchetype archetype;
     private Camera mainCamera;
 
+    private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
+
+    private float3 lastbuildPos;
+
+    private BoxGeometry bm;
+
+    [BurstCompile]
+    private struct BuildChunks : IJobParallelFor
+    {
+        [ReadOnly]
+        [DeallocateOnJobCompletion]public NativeArray<float3> Positions;
+        [ReadOnly]
+        public EntityArchetype archetype;
+        [ReadOnly]
+        public int chunkSize;
+        [ReadOnly]
+        public BoxGeometry bm;
+
+        public EntityCommandBuffer.Concurrent commandBuffer;
+
+        public void Execute(int index)
+        {
+            Entity en = commandBuffer.CreateEntity(index, archetype);
+            commandBuffer.SetComponent(index, en, new MegaChunk
+            {
+                center = new float3(Positions[index].x * chunkSize, Positions[index].y * chunkSize, Positions[index].z * chunkSize),
+                spawnCubes = true
+            });
+            commandBuffer.SetComponent(index, en, new Translation { Value = new float3(Positions[index].x * chunkSize, Positions[index].y * chunkSize, Positions[index].z * chunkSize) });
+            commandBuffer.SetComponent(index, en, new Rotation { Value = quaternion.identity });
+            commandBuffer.SetComponent(index, en, new LocalToWorld { });
+            commandBuffer.AddComponent(index, en, new PhysicsCollider
+            {
+                Value = Unity.Physics.BoxCollider.Create(bm)
+            });
+
+            //commandBuffer.AddBuffer<LinkedEntityGroup>(index, en);
+
+        }
+    }
+
     private void BuildMegaChunkAt(float3 position, int chunkSize) {
 
         Entity en = EntityManager.CreateEntity(archetype);
-        EntityManager.SetComponentData(en, new MegaChunk { center = new float3(position.x * chunkSize, position.y * chunkSize, position.z * chunkSize), spawnCubes = true });
+        EntityManager.SetComponentData(en, new MegaChunk {
+            center = new float3(position.x * chunkSize, position.y * chunkSize, position.z * chunkSize),
+            spawnCubes = true
+        });
+        EntityManager.SetComponentData(en, new Translation { Value = new float3(position.x * chunkSize, position.y * chunkSize, position.z * chunkSize) });
+        EntityManager.SetComponentData(en, new Rotation { Value = quaternion.identity });
+        EntityManager.SetComponentData(en, new LocalToWorld {  });
+        EntityManager.AddComponentData(en, new PhysicsCollider
+        {
+            Value = Unity.Physics.BoxCollider.Create(bm)
+        });
 
+        //EntityManager.AddBuffer<LinkedEntityGroup>(en);
     }
 
     private void BuildInitialCube(float3 position, int chunkSize, int radius)
@@ -31,9 +103,105 @@ public class BuildMegaChunk : JobComponentSystem
                     BuildMegaChunkAt(new int3(x, y, z), MeshComponents.chunkSize);
     }
 
+    [BurstCompile]
+    private struct BuildChunksPositions : IJob
+    {
+        
+        public CollisionWorld collisionWorld;
+        public float3 position;
+        public int chunkSize;
+        public int radius;
+
+        [WriteOnly]
+        public NativeList<float3> positions;
+
+        public void Execute()
+        {
+            int diameter = (int)math.floor(radius / 2);
+
+            for (int x = (int)math.floor(position.x - diameter); x < (int)math.floor(position.x + diameter); x += (radius - 1))
+                for (int y = (int)math.floor(position.y - diameter); y < (int)math.floor(position.y + diameter); y++)
+                    for (int z = (int)math.floor(position.z - diameter); z < (int)math.floor(position.z + diameter); z++)
+                    {
+                        RaycastInput input = new RaycastInput()
+                        {
+                            Start = new float3(x, y, z),
+                            End = new float3(x, y, z),
+                            Filter = new CollisionFilter()
+                            {
+                                BelongsTo = ~0u,
+                                CollidesWith = ~0u, // all 1s, so all layers, collide with everything
+                                GroupIndex = 0
+                            }
+                        };
+
+                        RaycastHit hit = new RaycastHit();
+                        bool haveHit = collisionWorld.CastRay(input, out hit);
+                        if (!haveHit)
+                            positions.Add(new float3(x, y, z));
+                    }
+
+            for (int z = (int)math.floor(position.z - diameter); z < (int)math.floor(position.z + diameter); z += (radius - 1))
+                for (int x = (int)math.floor(position.x - diameter); x < (int)math.floor(position.x + diameter); x++)
+                    for (int y = (int)math.floor(position.y - diameter); y < (int)math.floor(position.y + diameter); y++)
+                    {
+                        RaycastInput input = new RaycastInput()
+                        {
+                            Start = new float3(x, y, z),
+                            End = new float3(x, y, z),
+                            Filter = new CollisionFilter()
+                            {
+                                BelongsTo = ~0u,
+                                CollidesWith = ~0u, // all 1s, so all layers, collide with everything
+                                GroupIndex = 0
+                            }
+                        };
+
+                        RaycastHit hit = new RaycastHit();
+                        bool haveHit = collisionWorld.CastRay(input, out hit);
+                        if (!haveHit)
+                            positions.Add(new float3(x, y, z));
+                    }
+
+            for (int y = (int)math.floor(position.z - diameter); y < (int)math.floor(position.z + diameter); y += (radius - 1))
+                for (int x = (int)math.floor(position.x - diameter); x < (int)math.floor(position.x + diameter); x++)
+                    for (int z = (int)math.floor(position.y - diameter); z < (int)math.floor(position.y + diameter); z++)
+                    {
+                        RaycastInput input = new RaycastInput()
+                        {
+                            Start = new float3(x, y, z),
+                            End = new float3(x, y, z),
+                            Filter = new CollisionFilter()
+                            {
+                                BelongsTo = ~0u,
+                                CollidesWith = ~0u, // all 1s, so all layers, collide with everything
+                                GroupIndex = 0
+                            }
+                        };
+
+                        RaycastHit hit = new RaycastHit();
+                        bool haveHit = collisionWorld.CastRay(input, out hit);
+                        if (!haveHit)
+                            positions.Add(new float3(x, y, z));
+                    }
+
+        }
+    }
+
     protected override void OnCreate()
     {
         mainCamera = Camera.main;
+        lastbuildPos = mainCamera.transform.position;
+        endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+
+        bm = new BoxGeometry
+        {
+            BevelRadius = 0f,
+            Center = new float3(float3.zero - 0.5f),
+            Orientation = quaternion.identity,
+            Size = new float3(MeshComponents.chunkSize)
+        };
+
         base.OnCreate();
     }
 
@@ -45,16 +213,62 @@ public class BuildMegaChunk : JobComponentSystem
     protected override void OnStartRunning()
     {
         base.OnStartRunning();
-        archetype = EntityManager.CreateArchetype(typeof(MegaChunk));
+        archetype = EntityManager.CreateArchetype(typeof(MegaChunk), typeof(Translation), typeof(Rotation), typeof(LocalToWorld));
 
-        BuildInitialCube(new int3((int)mainCamera.transform.position.x / MeshComponents.chunkSize, 
-            (int)mainCamera.transform.position.y / MeshComponents.chunkSize, 
+        BuildInitialCube(new int3((int)mainCamera.transform.position.x / MeshComponents.chunkSize,
+            (int)mainCamera.transform.position.y / MeshComponents.chunkSize,
             (int)mainCamera.transform.position.z / MeshComponents.chunkSize), MeshComponents.chunkSize, MeshComponents.radius);
-        
+
+
     }
 
     protected override JobHandle OnUpdate(JobHandle inputDeps)
     {
+
+        float3 movement = lastbuildPos - new float3(mainCamera.transform.position);
+
+        if (math.length(movement) > MeshComponents.chunkSize)
+        {
+            var physicsWorldSystem = World.DefaultGameObjectInjectionWorld.GetExistingSystem<Unity.Physics.Systems.BuildPhysicsWorld>();
+            var collisionWorld = physicsWorldSystem.PhysicsWorld.CollisionWorld;
+
+            NativeList<float3> positions = new NativeList<float3>(Allocator.Persistent);
+
+            BuildChunksPositions buildChunksPositions = new BuildChunksPositions
+            {
+                collisionWorld = collisionWorld,
+                chunkSize = MeshComponents.chunkSize,
+                position = new int3((int)mainCamera.transform.position.x / MeshComponents.chunkSize, (int)mainCamera.transform.position.y / MeshComponents.chunkSize, (int)mainCamera.transform.position.z / MeshComponents.chunkSize),
+                radius = MeshComponents.radius,
+                positions = positions
+            };
+
+            inputDeps = buildChunksPositions.Schedule(inputDeps);
+
+            inputDeps.Complete();
+
+            NativeArray<float3> positionArray = new NativeArray<float3>(positions.ToArray(), Allocator.TempJob);
+
+            positions.Dispose();
+
+            BuildChunks buildChunks = new BuildChunks
+            {
+                archetype = archetype,
+                chunkSize = MeshComponents.chunkSize,
+                commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
+                Positions = positionArray,
+                bm = bm
+            };
+
+            inputDeps = buildChunks.Schedule(positionArray.Length, 16, inputDeps);
+
+            endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
+
+            lastbuildPos = mainCamera.transform.position;
+
+            
+        }
+
         return inputDeps;
     }
 }
@@ -69,6 +283,7 @@ public class FillChunks : JobComponentSystem
     {
         [ReadOnly]
         public EntityArchetype archetype;
+        [NativeDisableParallelForRestriction] public BufferFromEntity<LinkedEntityGroup> linkedGroup;
         [ReadOnly]
         public int chunk;
 
@@ -78,21 +293,31 @@ public class FillChunks : JobComponentSystem
         {
             if (megaChunk.spawnCubes)
             {
-                BuildChunkCubes(megaChunk.center, index, chunk);
+                BuildChunkCubes(megaChunk.center, index, chunk, en);
 
                 megaChunk.spawnCubes = false;
             }
         }
 
-        private void BuildChunkCubes(float3 position, int index, int chunkSize)
+        private void BuildChunkCubes(float3 position, int index, int chunkSize, Entity parent)
         {
             int diameter = (int)math.floor(chunkSize / 2);
 
-            for (int x = (int)math.floor(position.x - diameter); x < (int)math.floor(position.x + diameter); x++)
-                for (int y = (int)math.floor(position.y - diameter); y < (int)math.floor(position.y + diameter); y++)
-                    for (int z = (int)math.floor(position.z - diameter); z < (int)math.floor(position.z + diameter); z++)
-                        if(GetBlock(new float3(x, y, z)) != BlockType.AIR && ShouldDraw(new float3(x, y, z)))
-                            BuildCubeAt(new int3(x, y, z), index);
+            //Position in worldSpace, with no parenting
+            //for (int x = (int)math.floor(position.x - diameter); x < (int)math.floor(position.x + diameter); x++)
+            //    for (int y = (int)math.floor(position.y - diameter); y < (int)math.floor(position.y + diameter); y++)
+            //        for (int z = (int)math.floor(position.z - diameter); z < (int)math.floor(position.z + diameter); z++)
+            //            if(GetBlock(new float3(x, y, z)) != BlockType.AIR && ShouldDraw(new float3(x, y, z)))
+            //                BuildCubeAt(new int3(x, y, z), index, parent);
+
+            //Position in localspace, due to parenting
+            for (int x = - diameter; x <  diameter; x++)
+                for (int y = - diameter; y <  diameter; y++)
+                    for (int z =  - diameter; z <  + diameter; z++)
+                        if (GetBlock(new float3(x, y, z) + position) != BlockType.AIR && ShouldDraw(new float3(x, y, z) + position)) //Need the worldspace
+                            BuildCubeAt(new int3(x, y, z), index, parent);
+
+
         }
 
         private bool ShouldDraw(float3 position)
@@ -168,12 +393,18 @@ public class FillChunks : JobComponentSystem
             return math.unlerp(-1, 1, ((XY + YZ + XZ + YX + ZY + ZX) / 6.0f));
         }
 
-        private void BuildCubeAt(float3 position, int index)
+        private Entity BuildCubeAt(float3 position, int index, Entity parent)
         {
 
             Entity en = commandBuffer.CreateEntity(index, archetype);
             commandBuffer.SetComponent(index, en, new CubePosition { position = position, type = BlockType.DIRT, HasCube = false } );
+            commandBuffer.AddComponent(index, en, new Parent { Value =  parent});
 
+
+            //var buffer = commandBuffer.AddBuffer<LinkedEntityGroup>(index, parent);
+            //buffer.Add(en);
+
+            return en;
         }
 
         private BlockType GetBlock(float3 position)
@@ -229,7 +460,8 @@ public class FillChunks : JobComponentSystem
         {
             archetype = archetype,
             chunk = MeshComponents.chunkSize,
-            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent()
+            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
+            linkedGroup = GetBufferFromEntity<LinkedEntityGroup>()
         };
 
         inputDeps = spawncubesJob.Schedule(this, inputDeps);

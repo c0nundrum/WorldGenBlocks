@@ -92,7 +92,7 @@ public class MeshComponents : MonoBehaviour
         StartBuildMesh();
         StartBuildMegaChunksJob();
         //StartBuildCubesJob();
-        //StartDeleteChunksJob();
+        StartDeleteChunksJob();
         //StartDeleteCubesJob();
 
 
@@ -202,7 +202,7 @@ public class MeshComponents : MonoBehaviour
         var world = World.DefaultGameObjectInjectionWorld;
         var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
 
-        var countSystem = world.GetOrCreateSystem<DeleteChunks>();
+        var countSystem = world.GetOrCreateSystem<DeleteMegaChunk>();
 
         simulationSystemGroup.AddSystemToUpdateList(countSystem);
 
