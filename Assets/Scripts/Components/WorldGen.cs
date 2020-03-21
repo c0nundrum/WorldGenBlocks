@@ -24,15 +24,27 @@ public struct CubePosition : IComponentData {
     public float3 position;
     public BlockType type;
     public bool HasCube;
+    public Entity owner;
+    public Entity parent;
 };
 
 public struct MegaChunk : IComponentData {
     public float3 center;
     public bool spawnCubes;
+    public Entity entity;
 }
 
 public struct MoveChunkEvent : IComponentData
 {
     public Entity megaChunk;
     public float3 originalPosition;
+}
+public struct DeleteEntityEvent : IComponentData
+{
+    public Entity entity;
+}
+
+struct BuildCubes : ISharedComponentData
+{
+    public bool spawnCubes;
 }

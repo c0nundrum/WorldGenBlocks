@@ -16,9 +16,9 @@ public class MeshComponents : MonoBehaviour
     public Camera mainCamera;
     public static MeshComponents instance;
     public static int columnHeight = 8;
-    public readonly static int chunkSize = 8;
+    public readonly static int chunkSize = 4;
     public static int worldSize = 2;
-    public readonly static int radius = 4;
+    public readonly static int radius = 6;
     //public static List<string> toRemove = new List<string>();
     public Material material;
 
@@ -85,17 +85,9 @@ public class MeshComponents : MonoBehaviour
         //StartCoroutine(DrawChunks());
 
         //Build Bigger World
-        //StartCoroutine(BuildRecursiveWorld((int)(Camera.main.transform.position.x/chunkSize), (int)(Camera.main.transform.position.y / chunkSize), (int)(Camera.main.transform.position.z / chunkSize), radius));
-        //StartCamera();
-        //StartBuildChunks();
-        //CreateChunkController();
-        StartBuildMesh();
+        //StartBuildMesh();
         StartBuildMegaChunksJob();
-        //StartBuildCubesJob();
-        StartDeleteChunksJob();
-        //StartDeleteCubesJob();
-
-
+        //StartDeleteChunksJob();
 
     }
 
@@ -155,34 +147,6 @@ public class MeshComponents : MonoBehaviour
         ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
     }
 
-    private void StartBuildChunksJob()
-    {
-        var world = World.DefaultGameObjectInjectionWorld;
-        var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
-
-        var countSystem = world.GetOrCreateSystem<BuildChunkJob>();
-
-        simulationSystemGroup.AddSystemToUpdateList(countSystem);
-
-        simulationSystemGroup.SortSystemUpdateList();
-
-        ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
-    }
-
-    private void StartBuildCubesJob()
-    {
-        var world = World.DefaultGameObjectInjectionWorld;
-        var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
-
-        var countSystem = world.GetOrCreateSystem<BuildCubeJob>();
-
-        simulationSystemGroup.AddSystemToUpdateList(countSystem);
-
-        simulationSystemGroup.SortSystemUpdateList();
-
-        ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
-    }
-
     private void StartBuildMesh()
     {
         var world = World.DefaultGameObjectInjectionWorld;
@@ -203,20 +167,6 @@ public class MeshComponents : MonoBehaviour
         var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
 
         var countSystem = world.GetOrCreateSystem<DeleteMegaChunk>();
-
-        simulationSystemGroup.AddSystemToUpdateList(countSystem);
-
-        simulationSystemGroup.SortSystemUpdateList();
-
-        ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
-    }
-
-    private void StartDeleteCubesJob()
-    {
-        var world = World.DefaultGameObjectInjectionWorld;
-        var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
-
-        var countSystem = world.GetOrCreateSystem<DeleteCubes>();
 
         simulationSystemGroup.AddSystemToUpdateList(countSystem);
 
