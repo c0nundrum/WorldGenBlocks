@@ -16,9 +16,9 @@ public class MeshComponents : MonoBehaviour
     public Camera mainCamera;
     public static MeshComponents instance;
     public static int columnHeight = 8;
-    public readonly static int chunkSize = 4;
+    public readonly static int chunkSize = 8;
     public static int worldSize = 2;
-    public readonly static int radius = 6;
+    public readonly static int radius = 32;
     //public static List<string> toRemove = new List<string>();
     public Material material;
 
