@@ -39,6 +39,13 @@ public struct MoveChunkEvent : IComponentData
     public Entity megaChunk;
     public float3 originalPosition;
 }
+
+public struct BuildUltraChunkEvent : IComponentData
+{
+    public Entity eventEntity;
+    public float3 positionToBuild;
+}
+
 public struct DeleteEntityEvent : IComponentData
 {
     public Entity entity;
@@ -48,3 +55,19 @@ struct BuildCubes : ISharedComponentData
 {
     public bool spawnCubes;
 }
+
+struct UltraChunk : IComponentData, IEquatable<UltraChunk>
+{
+    public Entity entity;
+    public float3 center;
+    public bool startBuild;
+
+    public bool Equals(UltraChunk obj)
+    {
+        return center.Equals(obj.center);
+    }
+}
+
+struct CurrentUltraChunkFlag : IComponentData { }
+
+struct QueueManager : IComponentData { }

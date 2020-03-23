@@ -2,7 +2,7 @@
 using Unity.Mathematics;
 
 
-[InternalBufferCapacity(512)]
+[InternalBufferCapacity(16)]
 public struct EntitiesBuffer : IBufferElementData
 {
     // These implicit conversions are optional, but can help reduce typing.

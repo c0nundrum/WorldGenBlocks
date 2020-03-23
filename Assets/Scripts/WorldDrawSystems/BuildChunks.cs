@@ -8,6 +8,189 @@ using Unity.Burst;
 using Unity.Physics;
 using Unity.Rendering;
 
+public class ConsumeContructQueue : JobComponentSystem
+{
+    private EntityArchetype archetype;
+    private EntityQuery m_Query;
+
+    private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
+
+    [BurstCompile]
+    private struct BuildUltraChunks : IJob
+    {
+        [ReadOnly]
+        public EntityArchetype archetype;
+        [ReadOnly]
+        public float3 position;
+        [ReadOnly]
+        public Entity eventEntity;
+
+        public EntityCommandBuffer commandBuffer;
+
+        public void Execute()
+        {
+            BuildChunkAt(position);
+            commandBuffer.DestroyEntity(eventEntity);
+        }
+
+        private void BuildChunkAt(float3 chunkPos)
+        {
+            Entity en = commandBuffer.CreateEntity(archetype);
+            commandBuffer.SetComponent(en, new UltraChunk
+            {
+                center = chunkPos,
+                entity = en,
+                startBuild = true
+            });
+        }
+    }
+
+    protected override void OnStartRunning()
+    {
+        base.OnStartRunning();
+        archetype = EntityManager.CreateArchetype(typeof(UltraChunk));
+    }
+
+    protected override void OnCreate()
+    {
+        endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+        m_Query = GetEntityQuery(typeof(BuildUltraChunkEvent));
+        base.OnCreate();
+    }
+
+    protected override JobHandle OnUpdate(JobHandle inputDeps)
+    {
+        var Array = m_Query.ToComponentDataArray<BuildUltraChunkEvent>(Allocator.TempJob);
+        var toBuild = Array[0];
+        Array.Dispose();
+
+        BuildUltraChunks buildUltraChunks = new BuildUltraChunks
+        {
+            archetype = archetype,
+            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer(),
+            position = toBuild.positionToBuild,
+            eventEntity = toBuild.eventEntity
+        };
+
+        inputDeps = buildUltraChunks.Schedule(inputDeps);
+
+        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
+
+        return inputDeps;
+    }
+}
+
+[DisableAutoCreation]
+public class BuildUltraChunk : JobComponentSystem
+{
+    private EntityArchetype archetype;
+    private Camera mainCamera;
+    private float3 lastbuildPos;
+
+    private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
+
+    [BurstCompile]
+    private struct BuildUltraChunks : IJob
+    {
+        [ReadOnly]
+        public EntityArchetype archetype;
+        [ReadOnly]
+        public float3 position;
+
+        public EntityCommandBuffer commandBuffer;
+
+        public void Execute()
+        {
+            BuildChunkAt(position);
+        }
+
+        private void BuildChunkAt(float3 chunkPos)
+        {
+            Entity en = commandBuffer.CreateEntity(archetype);
+            commandBuffer.SetComponent(en, new UltraChunk
+            {
+                center = chunkPos,
+                entity = en,
+                startBuild = true
+            });
+        }
+    }
+
+    protected override void OnCreate()
+    {
+        mainCamera = Camera.main;
+        lastbuildPos = mainCamera.transform.position;
+        endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+
+        base.OnCreate();
+    }
+
+    protected override void OnDestroy()
+    {
+        base.OnDestroy();
+    }
+
+    protected override void OnStartRunning()
+    {
+        base.OnStartRunning();
+        archetype = EntityManager.CreateArchetype(typeof(UltraChunk));
+
+        float3 buildPos = math.floor(mainCamera.transform.position / (MeshComponents.radius / 4));
+        int offset = MeshComponents.radius / 4;
+
+        BuildUltraChunks buildUltraChunkJobLeftDown = new BuildUltraChunks
+        {
+            archetype = archetype,
+            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer(),
+            position = new float3(buildPos.x - offset, 0, buildPos.z - offset) * (MeshComponents.radius / 4)
+        };
+
+        JobHandle job = buildUltraChunkJobLeftDown.Schedule();
+
+        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
+
+        BuildUltraChunks buildUltraChunkJobLeftUp = new BuildUltraChunks
+        {
+            archetype = archetype,
+            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer(),
+            position = new float3(buildPos.x - offset, 0, buildPos.z + offset) * (MeshComponents.radius / 4)
+        };
+
+        job = buildUltraChunkJobLeftUp.Schedule(job);
+
+        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
+
+        BuildUltraChunks buildUltraChunkJobRightUp = new BuildUltraChunks
+        {
+            archetype = archetype,
+            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer(),
+            position = new float3(buildPos.x + offset, 0, buildPos.z + offset) * (MeshComponents.radius / 4)
+        };
+
+        job = buildUltraChunkJobRightUp.Schedule(job);
+
+        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
+
+        BuildUltraChunks buildUltraChunkJobRightDown = new BuildUltraChunks
+        {
+            archetype = archetype,
+            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer(),
+            position = new float3(buildPos.x + offset, 0, buildPos.z - offset) * (MeshComponents.radius / 4)
+        };
+
+        job = buildUltraChunkJobRightDown.Schedule(job);
+
+        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
+
+        lastbuildPos = mainCamera.transform.position;
+    }
+
+    protected override JobHandle OnUpdate(JobHandle inputDeps)
+    {
+        return inputDeps;
+    }
+}
+
 [DisableAutoCreation]
 public class BuildMegaChunk : JobComponentSystem
 {
@@ -19,6 +202,18 @@ public class BuildMegaChunk : JobComponentSystem
     private float3 lastbuildPos;
 
     private BoxGeometry bm;
+
+    [BurstCompile]
+    private struct SetUpdateChunks : IJobForEachWithEntity<UltraChunk>
+    {
+        public bool shouldDraw;
+
+        public void Execute(Entity entity, int index, ref UltraChunk megaChunk)
+        {
+            megaChunk.startBuild = shouldDraw;
+        }
+
+    }
 
     [BurstCompile]
     private struct BuildParallelChunks : IJobParallelFor
@@ -115,11 +310,15 @@ public class BuildMegaChunk : JobComponentSystem
 
     }
 
+    private EntityQuery m_Query;
+
     protected override void OnCreate()
     {
         mainCamera = Camera.main;
         lastbuildPos = mainCamera.transform.position;
         endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+
+        m_Query = GetEntityQuery(typeof(UltraChunk));
 
         bm = new BoxGeometry
         {
@@ -142,45 +341,82 @@ public class BuildMegaChunk : JobComponentSystem
         base.OnStartRunning();
         archetype = EntityManager.CreateArchetype(typeof(MegaChunk), typeof(Translation), typeof(Rotation), typeof(LocalToWorld));
 
-        BuildParallelChunks buildParallelChunks = new BuildParallelChunks
-        {
-            archetype = archetype,
-            chunkSize = MeshComponents.chunkSize,
-            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
-            bm = bm,
-            position = mainCamera.transform.position / MeshComponents.chunkSize,
-            radius = MeshComponents.radius
-        };
+        //BuildParallelChunks buildParallelChunks = new BuildParallelChunks
+        //{
+        //    archetype = archetype,
+        //    chunkSize = MeshComponents.chunkSize,
+        //    commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
+        //    bm = bm,
+        //    position = mainCamera.transform.position / MeshComponents.chunkSize,
+        //    radius = MeshComponents.radius / 2
+        //};
 
-        JobHandle job = buildParallelChunks.Schedule(MeshComponents.radius * MeshComponents.radius, 8);
+        //JobHandle job = buildParallelChunks.Schedule(MeshComponents.radius * MeshComponents.radius, 8);
 
-        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
+        //endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
 
         lastbuildPos = mainCamera.transform.position;
     }
 
     protected override JobHandle OnUpdate(JobHandle inputDeps)
     {
-        float3 movement = lastbuildPos - new float3(mainCamera.transform.position);
+        //float3 movement = lastbuildPos - new float3(mainCamera.transform.position);
 
-        if (math.length(movement) > MeshComponents.chunkSize)
+        //if (math.length(movement) > MeshComponents.chunkSize)
+        //{
+        //    //BuildParallelChunks buildParallelChunks = new BuildParallelChunks
+        //    //{
+        //    //    archetype = archetype,
+        //    //    chunkSize = MeshComponents.chunkSize,
+        //    //    commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
+        //    //    bm = bm,
+        //    //    position = mainCamera.transform.position / MeshComponents.chunkSize,
+        //    //    radius = MeshComponents.radius
+        //    //};
+
+        //    //inputDeps = buildParallelChunks.Schedule(MeshComponents.radius * MeshComponents.radius, 8, inputDeps);
+
+        //    //endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
+
+        //    //lastbuildPos = mainCamera.transform.position;          
+        //}
+        NativeArray<UltraChunk> ultraChunks = m_Query.ToComponentDataArray<UltraChunk>(Allocator.TempJob);
+
+        for (int i = 0; i < ultraChunks.Length; i++)
         {
-            //BuildParallelChunks buildParallelChunks = new BuildParallelChunks
-            //{
-            //    archetype = archetype,
-            //    chunkSize = MeshComponents.chunkSize,
-            //    commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
-            //    bm = bm,
-            //    position = mainCamera.transform.position / MeshComponents.chunkSize,
-            //    radius = MeshComponents.radius
-            //};
+            UltraChunk chunk = ultraChunks[i];
+            if (chunk.startBuild)
+            {
+                BuildParallelChunks buildParallelChunks = new BuildParallelChunks
+                {
+                    archetype = archetype,
+                    chunkSize = MeshComponents.chunkSize,
+                    commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
+                    bm = bm,
+                    position = chunk.center / MeshComponents.chunkSize,
+                    radius = MeshComponents.radius / 2
+                };
 
-            //inputDeps = buildParallelChunks.Schedule(MeshComponents.radius * MeshComponents.radius, 8, inputDeps);
+                inputDeps = buildParallelChunks.Schedule((MeshComponents.radius / 2) * (MeshComponents.radius / 2), 8, inputDeps);
 
-            //endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
+                endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
 
-            //lastbuildPos = mainCamera.transform.position;          
+                chunk.startBuild = false;
+
+                EntityManager.SetComponentData(chunk.entity, chunk);
+            }
+
         }
+
+        //SetUpdateChunks setCubeUpdateJob = new SetUpdateChunks
+        //{
+        //    shouldDraw = false
+        //};
+
+        //inputDeps = setCubeUpdateJob.Schedule(this, inputDeps);
+
+        ultraChunks.Dispose();
+
         return inputDeps;
     }
 }
