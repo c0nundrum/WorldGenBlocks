@@ -11,7 +11,7 @@ using Unity.Rendering;
 using Unity.Transforms;
 using RaycastHit = Unity.Physics.RaycastHit;
 
-//[DisableAutoCreation]
+[DisableAutoCreation]
 //[UpdateAfter(typeof(CreateMeshJobSystem))]
 public class BuildMeshSystem : ComponentSystem
 {
@@ -208,7 +208,8 @@ public class BuildMeshSystem : ComponentSystem
 
     protected override void OnCreate()
     {
-        OriginCube = MakeCubeAtZero();
+        //OriginCube = MakeCubeAtZero();
+        OriginCube = MeshComponents.tileMesh;
 
         base.OnCreate();
     }
@@ -228,16 +229,18 @@ public class BuildMeshSystem : ComponentSystem
 
         Entities.WithNone<RenderMesh>().WithAll<CubePosition>().ForEach((Entity en, ref CubePosition cube) =>
         {
-            EntityManager.SetComponentData(en, new Parent { Value = cube.parent });          
-            EntityManager.SetComponentData(en, new Translation { Value = cube.position });
-            EntityManager.SetComponentData(en, new Rotation { Value = quaternion.identity });
-            EntityManager.SetComponentData(en, new LocalToParent { });
-            EntityManager.AddSharedComponentData(en, SingleCube);
-            EntityManager.SetComponentData(en, new RenderBounds { Value = OriginCube.bounds.ToAABB() });
-            
-            
-            cube.HasCube = true;
+            if (!cube.HasCube)
+            {
+                EntityManager.SetComponentData(en, new Parent { Value = cube.parent });
+                EntityManager.SetComponentData(en, new Translation { Value = cube.position });
+                EntityManager.SetComponentData(en, new Rotation { Value = quaternion.identity });
+                EntityManager.SetComponentData(en, new LocalToParent { });
+                EntityManager.AddSharedComponentData(en, SingleCube);
+                EntityManager.SetComponentData(en, new RenderBounds { Value = OriginCube.bounds.ToAABB() });
 
+
+                cube.HasCube = true;
+            }
         });
     }
 }

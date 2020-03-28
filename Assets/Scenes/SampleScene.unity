@@ -153,7 +153,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   mainCamera: {fileID: 963194227}
-  material: {fileID: 2100000, guid: 33552d14b22375447b2f70022fa120e6, type: 2}
+  tileMeshComp: {fileID: 4866372484537245367, guid: d4951ebcc04d97a47b240c2ba8cad09e,
+    type: 3}
+  material: {fileID: 2100000, guid: e9424902b52ad8a4282e778e18969599, type: 2}
   lasbuildPos:
     x: 0
     y: 0

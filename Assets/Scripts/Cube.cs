@@ -6,7 +6,7 @@ using UnityEngine;
 using Unity.Entities;
 using Unity.Collections;
 
-public enum BlockType { GRASS, DIRT, STONE, DIAMOND, AIR };
+public enum BlockType { GRASS, DIRT, DIAMOND, STONE, AIR };
 
 public struct Block
 {

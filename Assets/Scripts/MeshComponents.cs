@@ -14,11 +14,13 @@ using Material = UnityEngine.Material;
 public class MeshComponents : MonoBehaviour
 {
     public Camera mainCamera;
+    public Mesh tileMeshComp;
     public static MeshComponents instance;
     public static int columnHeight = 8;
     public readonly static int chunkSize = 8;
     public static int worldSize = 2;
     public readonly static int radius = 32;
+    public static Mesh tileMesh;
     //public static List<string> toRemove = new List<string>();
     public Material material;
 
@@ -51,6 +53,7 @@ public class MeshComponents : MonoBehaviour
     private void Awake()
     {
         textureAtlas = material;
+        tileMesh = tileMeshComp;
         instance = this;
     }
 
@@ -85,10 +88,10 @@ public class MeshComponents : MonoBehaviour
         //StartCoroutine(DrawChunks());
 
         //Build Bigger World
-        //StartBuildMesh();
+        StartBuildMesh();
         StartBuildMegaChunksJob();
         StartBuildUltraChunksJob();
-        StartBuildQueue();
+        //StartBuildQueue();
         //StartDeleteChunksJob();
 
     }

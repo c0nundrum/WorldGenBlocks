@@ -130,6 +130,18 @@ public class BuildUltraChunk : JobComponentSystem
         base.OnDestroy();
     }
 
+    private float3 GetPosition(float3 position)
+    {
+        float outerRadius = 1f;
+        float innerRadius = outerRadius * 0.866025404f;
+
+        position.x *= 0.866025404f;
+        position.z *= (outerRadius * 0.75f);
+
+        return position;
+    }
+
+
     protected override void OnStartRunning()
     {
         base.OnStartRunning();
@@ -138,49 +150,26 @@ public class BuildUltraChunk : JobComponentSystem
         float3 buildPos = math.floor(mainCamera.transform.position / (MeshComponents.radius / 4));
         int offset = MeshComponents.radius / 4;
 
-        BuildUltraChunks buildUltraChunkJobLeftDown = new BuildUltraChunks
+        NativeList<float3> positionList = new NativeList<float3>(Allocator.Temp);
+
+        positionList.Add(GetPosition(new float3(buildPos.x - offset, 0, buildPos.z - offset) * (MeshComponents.radius / 4)));
+        positionList.Add(GetPosition(new float3(buildPos.x + offset, 0, buildPos.z - offset) * (MeshComponents.radius / 4)));
+        positionList.Add(GetPosition(new float3(buildPos.x - offset, 0, buildPos.z + offset) * (MeshComponents.radius / 4)));
+        positionList.Add(GetPosition(new float3(buildPos.x + offset, 0, buildPos.z + offset) * (MeshComponents.radius / 4)));
+
+        for (int i = 0; i < positionList.Length; i++)
         {
-            archetype = archetype,
-            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer(),
-            position = new float3(buildPos.x - offset, 0, buildPos.z - offset) * (MeshComponents.radius / 4)
-        };
+            BuildUltraChunks buildUltraChunkJobLeftDown = new BuildUltraChunks
+            {
+                archetype = archetype,
+                commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer(),
+                position = positionList[i]
+            };
 
-        JobHandle job = buildUltraChunkJobLeftDown.Schedule();
+            JobHandle job = buildUltraChunkJobLeftDown.Schedule();
 
-        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
-
-        BuildUltraChunks buildUltraChunkJobLeftUp = new BuildUltraChunks
-        {
-            archetype = archetype,
-            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer(),
-            position = new float3(buildPos.x - offset, 0, buildPos.z + offset) * (MeshComponents.radius / 4)
-        };
-
-        job = buildUltraChunkJobLeftUp.Schedule(job);
-
-        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
-
-        BuildUltraChunks buildUltraChunkJobRightUp = new BuildUltraChunks
-        {
-            archetype = archetype,
-            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer(),
-            position = new float3(buildPos.x + offset, 0, buildPos.z + offset) * (MeshComponents.radius / 4)
-        };
-
-        job = buildUltraChunkJobRightUp.Schedule(job);
-
-        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
-
-        BuildUltraChunks buildUltraChunkJobRightDown = new BuildUltraChunks
-        {
-            archetype = archetype,
-            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer(),
-            position = new float3(buildPos.x + offset, 0, buildPos.z - offset) * (MeshComponents.radius / 4)
-        };
-
-        job = buildUltraChunkJobRightDown.Schedule(job);
-
-        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
+            endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
+        }
 
         lastbuildPos = mainCamera.transform.position;
     }
@@ -235,13 +224,13 @@ public class BuildMegaChunk : JobComponentSystem
         {
             int diameter = (int)math.floor(radius / 2);
 
-            int2 Position2D = GetPositionFromIndex(index, radius);
+            float2 Position2D = GetPositionFromIndex(index, radius);
 
-            int x = ((int)math.floor(position.x + Position2D.x) - diameter) * chunkSize;
-            int z = ((int)math.floor(position.z + Position2D.y) - diameter) * chunkSize;
-            int y = GenerateHeight(x, z);
+            float x = ((position.x + Position2D.x) - diameter) * chunkSize;
+            float z = ((position.z + Position2D.y) - diameter) * chunkSize;
+            //float y = GenerateHeight(x, z);
 
-            BuildChunkAt(new float3(x, y, z), index);
+            BuildChunkAt(new float3(x, 0, z), index);
 
         }
 
@@ -263,12 +252,24 @@ public class BuildMegaChunk : JobComponentSystem
             //});
         }
 
-        private int2 GetPositionFromIndex(int index, int radius)
+        private float2 GetPositionFromIndex(int index, int radius)
         {
-            int x = index % radius;
-            int y = index / radius;
 
-            return new int2(x, y);
+            float outerRadius = 1f;
+            float innerRadius = outerRadius * 0.866025404f;
+
+            float x = index % radius;
+            float y = index / radius;
+
+            if (y % 2 == 1)
+            {
+                x += 0.5f;
+            }
+
+            x = x * innerRadius;
+            y = y * (outerRadius * 0.75f);
+
+            return new float2(x, y);
         }
 
         private int GenerateHeight(float x, float z)
@@ -459,35 +460,38 @@ public class FillChunks : JobComponentSystem
             if (input.spawnCubes)
             {
                 
-                int2 position = Get2DPositionFromIndex(index, chunkSize);
-
-                int x = (int)math.floor(position.x - (chunkSize / 2) + input.center.x);
-                int z = (int)math.floor(position.y - (chunkSize / 2) + input.center.z);
+                float2 position = Get2DPositionFromIndex(index, chunkSize);
+                float z = position.y - (chunkSize / 2) + input.center.z;
+                float x = position.x - (chunkSize / 2) + input.center.x;
 
                 float y = GenerateHeight(position.x - (chunkSize / 2) + input.center.x, position.y - (chunkSize / 2) + input.center.z);
+                //float y = 0;
 
-                //if (GetBlock(new float3(x, y, z)) <= BlockType.STONE && ShouldDraw((position - (chunkSize / 2)) + input.center)) //Need the worldspace               
-                if (GetBlock(new float3(x, y, z)) <= BlockType.STONE)//Need the worldspace      
-                {
-                    BuildCubeAt(new float3(position.x, y - input.center.y, position.y), index, input.entity); //position.y = z
+                //BuildCubeAt(new float3(position.x, y - input.center.y, position.y), index, input.entity); //position.y = z // Debug, Always build
+                BuildCubeAt(new float3(position.x, y - input.center.y, position.y), index, input.entity); //position.y = z
 
-                    //Build Cliffs
-                    NativeArray<int> neighboursHeight = GenerateNeighbourHeight(new float3(x, y, z));
-                    for (int i = 0; i < neighboursHeight.Length; i++)
-                    {
-                        if( y - neighboursHeight[i]> 1)
-                            for (int j = 0; j <= y - neighboursHeight[i]; j++)
-                            {
-                                BuildCubeAt(new float3(position.x, (y - j) - input.center.y, position.y), index, input.entity); //position.y = z
-                            }
-                    }
-                }                                         
+                ////if (GetBlock(new float3(x, y, z)) <= BlockType.STONE && ShouldDraw((position - (chunkSize / 2)) + input.center)) //Need the worldspace               
+                //if (GetBlock(new float3(x, y, z)) < BlockType.AIR)//Need the worldspace      
+                //{
+                //    BuildCubeAt(new float3(position.x, y - input.center.y, position.y), index, input.entity); //position.y = z
+
+                //    ////Build Cliffs
+                //    //NativeArray<float> neighboursHeight = GenerateNeighbourHeight(new float3(x, y, z));
+                //    //for (int i = 0; i < neighboursHeight.Length; i++)
+                //    //{
+                //    //    if( y - neighboursHeight[i]> 1)
+                //    //        for (int j = 0; j <= y - neighboursHeight[i]; j++)
+                //    //        {
+                //    //            BuildCubeAt(new float3(position.x, (y - j) - input.center.y, position.y), index, input.entity); //position.y = z
+                //    //        }
+                //    //}
+                //}                                         
             }
         }
 
-        private NativeArray<int> GenerateNeighbourHeight(float3 worldSpacePosition)
+        private NativeArray<float> GenerateNeighbourHeight(float3 worldSpacePosition)
         {
-            NativeArray<int> neighboursHeight = new NativeArray<int>(4, Allocator.Temp);
+            NativeArray<float> neighboursHeight = new NativeArray<float>(4, Allocator.Temp);
             neighboursHeight[0] = GenerateHeight(worldSpacePosition.x + 1, worldSpacePosition.z);
             neighboursHeight[1] = GenerateHeight(worldSpacePosition.x - 1, worldSpacePosition.z);
             neighboursHeight[2] = GenerateHeight(worldSpacePosition.x, worldSpacePosition.z + 1);
@@ -506,17 +510,29 @@ public class FillChunks : JobComponentSystem
             return new int3(x, y, z);
         }
 
-        private int2 Get2DPositionFromIndex(int index, int radius)
+        private float2 Get2DPositionFromIndex(int index, int radius)
         {
-            int x = index % radius;
-            int y = index / radius;
+            float outerRadius = 1f;
+            float innerRadius = outerRadius * 0.866025404f;
 
-            return new int2(x, y);
+            float x = index % radius;
+            float y = index / radius;
+
+            if (y % 2 == 1)
+            {
+                x += 0.5f;
+            }
+
+            x = x * innerRadius;
+            y = y * (outerRadius * 0.75f);
+
+            return new float2(x, y);
         }
 
         private Entity BuildCubeAt(float3 position, int index, Entity parent)
         {
             Entity en = commandBuffer.CreateEntity(index, archetype);
+                
             commandBuffer.SetComponent(index, en, new CubePosition { position = position - (chunkSize / 2), type = BlockType.DIRT, HasCube = false, owner = en, parent = parent });
 
             return en;
@@ -572,7 +588,7 @@ public class FillChunks : JobComponentSystem
             return math.lerp(newmin, newmax, math.unlerp(originalMin, originalMax, value));
         }
 
-        private int GenerateHeight(float x, float z)
+        private float GenerateHeight(float x, float z)
         {
             int maxHeight = 150;
             float smooth = 0.01f;
@@ -580,7 +596,8 @@ public class FillChunks : JobComponentSystem
             float persistence = 0.5f;
             //Parameters should come in from the chunk
             float height = Map(0, maxHeight, 0, 1, FBM(x * smooth, z * smooth, octaves, persistence));
-            return (int)height;
+            return height * 0.1159f; //Weird number is the mesh height, cant import it because its a mesh
+            //return 0;
         }
 
         private int GenerateStoneHeight(float x, float z)
