@@ -468,7 +468,7 @@ public class FillChunks : JobComponentSystem
                 //float y = 0;
 
                 //BuildCubeAt(new float3(position.x, y - input.center.y, position.y), index, input.entity); //position.y = z // Debug, Always build
-                BuildCubeAt(new float3(position.x, y - input.center.y, position.y), index, input.entity); //position.y = z
+                BuildCubeAt(new float3(position.x, math.floor(y - input.center.y), position.y), index, input.entity); //position.y = z
 
                 ////if (GetBlock(new float3(x, y, z)) <= BlockType.STONE && ShouldDraw((position - (chunkSize / 2)) + input.center)) //Need the worldspace               
                 //if (GetBlock(new float3(x, y, z)) < BlockType.AIR)//Need the worldspace      
@@ -596,7 +596,8 @@ public class FillChunks : JobComponentSystem
             float persistence = 0.5f;
             //Parameters should come in from the chunk
             float height = Map(0, maxHeight, 0, 1, FBM(x * smooth, z * smooth, octaves, persistence));
-            return height * 0.1159f; //Weird number is the mesh height, cant import it because its a mesh
+            //return height * 0.1159f; //Weird number is the mesh height, cant import it because its a mesh
+            return height * .5f;
             //return 0;
         }
 
@@ -617,7 +618,7 @@ public class FillChunks : JobComponentSystem
             float frequency = 1;
             float amplitude = 1;
             float maxValue = 0;
-            float offset = 32000f;
+            float offset = 16000f;
 
             for (int i = 0; i < oct; i++)
             {

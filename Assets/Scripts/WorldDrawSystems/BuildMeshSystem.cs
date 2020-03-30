@@ -12,6 +12,31 @@ using Unity.Transforms;
 using RaycastHit = Unity.Physics.RaycastHit;
 
 [DisableAutoCreation]
+public class BuildChunkMesh : ComponentSystem
+{
+    private Mesh originMesh;
+
+    protected override void OnCreate()
+    {
+        //OriginCube = MakeCubeAtZero();
+        originMesh = MeshComponents.tileMesh;
+
+        base.OnCreate();
+    }
+
+    protected override void OnUpdate()
+    {
+        Entities.WithAll<MegaChunk>().WithNone<RenderMesh>().ForEach((Entity en, ref MegaChunk chunk) => {
+
+            DynamicBuffer<Child> buffer = EntityManager.GetBuffer<Child>(en);
+            if (buffer.IsCreated)
+                Debug.Log("found buffer");
+
+        });
+    }
+}
+
+[DisableAutoCreation]
 //[UpdateAfter(typeof(CreateMeshJobSystem))]
 public class BuildMeshSystem : ComponentSystem
 {

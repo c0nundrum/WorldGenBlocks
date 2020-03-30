@@ -89,6 +89,7 @@ public class MeshComponents : MonoBehaviour
 
         //Build Bigger World
         StartBuildMesh();
+        //StartBuildChunkMesh();
         StartBuildMegaChunksJob();
         StartBuildUltraChunksJob();
         //StartBuildQueue();
@@ -187,6 +188,20 @@ public class MeshComponents : MonoBehaviour
         var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
 
         var countSystem = world.GetOrCreateSystem<BuildMeshSystem>();
+
+        simulationSystemGroup.AddSystemToUpdateList(countSystem);
+
+        simulationSystemGroup.SortSystemUpdateList();
+
+        ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
+    }
+
+    private void StartBuildChunkMesh()
+    {
+        var world = World.DefaultGameObjectInjectionWorld;
+        var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
+
+        var countSystem = world.GetOrCreateSystem<BuildChunkMesh>();
 
         simulationSystemGroup.AddSystemToUpdateList(countSystem);
 
