@@ -192,19 +192,7 @@ public class BuildMegaChunk : JobComponentSystem
 
     private BoxGeometry bm;
 
-    [BurstCompile]
-    private struct SetUpdateChunks : IJobForEachWithEntity<UltraChunk>
-    {
-        public bool shouldDraw;
-
-        public void Execute(Entity entity, int index, ref UltraChunk megaChunk)
-        {
-            megaChunk.startBuild = shouldDraw;
-        }
-
-    }
-
-    [BurstCompile]
+    //[BurstCompile] //Burst cant work with sharedcomponent data
     private struct BuildParallelChunks : IJobParallelFor
     {
         [ReadOnly]
@@ -217,6 +205,8 @@ public class BuildMegaChunk : JobComponentSystem
         public BoxGeometry bm;
         [ReadOnly]
         public int radius;
+        [ReadOnly]
+        public UltraChunkGroup group;
 
         public EntityCommandBuffer.Concurrent commandBuffer;
 
@@ -250,6 +240,8 @@ public class BuildMegaChunk : JobComponentSystem
             //{
             //    Value = Unity.Physics.BoxCollider.Create(bm)
             //});
+
+            commandBuffer.AddSharedComponent(index, en, group);
         }
 
         private float2 GetPositionFromIndex(int index, int radius)
@@ -342,52 +334,19 @@ public class BuildMegaChunk : JobComponentSystem
         base.OnStartRunning();
         archetype = EntityManager.CreateArchetype(typeof(MegaChunk), typeof(Translation), typeof(Rotation), typeof(LocalToWorld));
 
-        //BuildParallelChunks buildParallelChunks = new BuildParallelChunks
-        //{
-        //    archetype = archetype,
-        //    chunkSize = MeshComponents.chunkSize,
-        //    commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
-        //    bm = bm,
-        //    position = mainCamera.transform.position / MeshComponents.chunkSize,
-        //    radius = MeshComponents.radius / 2
-        //};
-
-        //JobHandle job = buildParallelChunks.Schedule(MeshComponents.radius * MeshComponents.radius, 8);
-
-        //endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
-
         lastbuildPos = mainCamera.transform.position;
     }
 
     protected override JobHandle OnUpdate(JobHandle inputDeps)
     {
-        //float3 movement = lastbuildPos - new float3(mainCamera.transform.position);
-
-        //if (math.length(movement) > MeshComponents.chunkSize)
-        //{
-        //    //BuildParallelChunks buildParallelChunks = new BuildParallelChunks
-        //    //{
-        //    //    archetype = archetype,
-        //    //    chunkSize = MeshComponents.chunkSize,
-        //    //    commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
-        //    //    bm = bm,
-        //    //    position = mainCamera.transform.position / MeshComponents.chunkSize,
-        //    //    radius = MeshComponents.radius
-        //    //};
-
-        //    //inputDeps = buildParallelChunks.Schedule(MeshComponents.radius * MeshComponents.radius, 8, inputDeps);
-
-        //    //endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
-
-        //    //lastbuildPos = mainCamera.transform.position;          
-        //}
         NativeArray<UltraChunk> ultraChunks = m_Query.ToComponentDataArray<UltraChunk>(Allocator.TempJob);
-
+        
         for (int i = 0; i < ultraChunks.Length; i++)
         {
             UltraChunk chunk = ultraChunks[i];
             if (chunk.startBuild)
             {
+                UltraChunkGroup group = new UltraChunkGroup { ultrachunkPosition = math.floor(chunk.center) };
                 BuildParallelChunks buildParallelChunks = new BuildParallelChunks
                 {
                     archetype = archetype,
@@ -395,7 +354,8 @@ public class BuildMegaChunk : JobComponentSystem
                     commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
                     bm = bm,
                     position = chunk.center / MeshComponents.chunkSize,
-                    radius = MeshComponents.radius / 2
+                    radius = MeshComponents.radius / 2,
+                    group = group
                 };
 
                 inputDeps = buildParallelChunks.Schedule((MeshComponents.radius / 2) * (MeshComponents.radius / 2), 8, inputDeps);
@@ -406,15 +366,7 @@ public class BuildMegaChunk : JobComponentSystem
 
                 EntityManager.SetComponentData(chunk.entity, chunk);
             }
-
         }
-
-        //SetUpdateChunks setCubeUpdateJob = new SetUpdateChunks
-        //{
-        //    shouldDraw = false
-        //};
-
-        //inputDeps = setCubeUpdateJob.Schedule(this, inputDeps);
 
         ultraChunks.Dispose();
 

@@ -8,6 +8,25 @@ using Unity.Burst;
 using Unity.Physics;
 using Unity.Rendering;
 
+[UpdateBefore(typeof(QueueBuffer))]
+public class ClearQueueBuffer : ComponentSystem
+{
+    private EntityQuery m_Query;
+    protected override void OnCreate()
+    {
+        m_Query = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<RemoveUltraChunkEvent>());
+        base.OnCreate();
+    }
+    protected override void OnUpdate()
+    {
+        Entities.WithAll<QueueManager>().ForEach((Entity en, ref QueueManager manager) =>
+        {
+            EntityManager.GetBuffer<EntitiesBuffer>(en).Clear();
+        });
+    }
+}
+
+[UpdateAfter(typeof(DeleteSystem))]
 public class QueueBuffer : ComponentSystem
 {
     private Entity queueManagerEntity;

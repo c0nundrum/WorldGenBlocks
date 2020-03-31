@@ -46,6 +46,12 @@ public struct BuildUltraChunkEvent : IComponentData
     public float3 positionToBuild;
 }
 
+public struct RemoveUltraChunkEvent : IComponentData {
+    public float3 group;
+};
+
+public struct QueueRemoveEntityFlag : IComponentData { };
+
 public struct DeleteEntityEvent : IComponentData
 {
     public Entity entity;
@@ -66,6 +72,11 @@ struct UltraChunk : IComponentData, IEquatable<UltraChunk>
     {
         return center.Equals(obj.center);
     }
+}
+
+struct UltraChunkGroup : ISharedComponentData
+{
+    public float3 ultrachunkPosition;
 }
 
 struct CurrentUltraChunkFlag : IComponentData { }
