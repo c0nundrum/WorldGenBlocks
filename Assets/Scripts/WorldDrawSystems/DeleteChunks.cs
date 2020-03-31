@@ -10,7 +10,6 @@ using Unity.Transforms;
 
 public class DeleteSystem : JobComponentSystem
 {
-
     private BeginPresentationEntityCommandBufferSystem beginPresentationEntityCommandBufferSystem;
 
     private EntityQuery m_Query;
@@ -129,62 +128,62 @@ public class ConsumeRemoveUltraChunkEvent : JobComponentSystem
     }
 }
 
-[DisableAutoCreation]
-public class DeleteUltraChunk : JobComponentSystem //Start of the deleting pipeline
-{
-    private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
-    private Camera mainCamera;
-    private EntityArchetype archetype;
+//[DisableAutoCreation]
+//public class DeleteUltraChunk : JobComponentSystem //Start of the deleting pipeline
+//{
+//    private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
+//    private Camera mainCamera;
+//    private EntityArchetype archetype;
 
-    [BurstCompile]
-    private struct CheckForDeletion : IJobForEachWithEntity<UltraChunk>
-    {
-        [ReadOnly]
-        public float3 currentPosition;
-        [ReadOnly]
-        public int radius;
-        [ReadOnly]
-        public EntityArchetype archetype;
+//    [BurstCompile]
+//    private struct CheckForDeletion : IJobForEachWithEntity<UltraChunk>
+//    {
+//        [ReadOnly]
+//        public float3 currentPosition;
+//        [ReadOnly]
+//        public int radius;
+//        [ReadOnly]
+//        public EntityArchetype archetype;
 
-        public EntityCommandBuffer.Concurrent commandBuffer;
+//        public EntityCommandBuffer.Concurrent commandBuffer;
 
-        public void Execute(Entity en, int index, ref UltraChunk ultraChunk)
-        {
-            if(math.distancesq(currentPosition, ultraChunk.center) > (radius * radius) * 10)
-            {
-                Entity entity = commandBuffer.CreateEntity(index, archetype);
-                commandBuffer.SetComponent(index, entity, new RemoveUltraChunkEvent { group = ultraChunk.center });
-                commandBuffer.DestroyEntity(index, en);
-            }
-        }
-    }
+//        public void Execute(Entity en, int index, ref UltraChunk ultraChunk)
+//        {
+//            if(math.distancesq(currentPosition, ultraChunk.center) > (radius * radius) * 10)
+//            {
+//                Entity entity = commandBuffer.CreateEntity(index, archetype);
+//                commandBuffer.SetComponent(index, entity, new RemoveUltraChunkEvent { group = ultraChunk.center });
+//                commandBuffer.DestroyEntity(index, en);
+//            }
+//        }
+//    }
 
-    protected override void OnCreate()
-    {
-        mainCamera = Camera.main;
-        endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
-        archetype = EntityManager.CreateArchetype(typeof(RemoveUltraChunkEvent));
+//    protected override void OnCreate()
+//    {
+//        mainCamera = Camera.main;
+//        endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+//        archetype = EntityManager.CreateArchetype(typeof(RemoveUltraChunkEvent));
 
-        base.OnCreate();
-    }
+//        base.OnCreate();
+//    }
 
-    protected override JobHandle OnUpdate(JobHandle inputDeps)
-    {
-        CheckForDeletion deletionJob = new CheckForDeletion
-        {
-            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
-            currentPosition = new float3(mainCamera.transform.position.x, 0, mainCamera.transform.position.z),
-            radius = MeshComponents.radius,
-            archetype = archetype
-        };
+//    protected override JobHandle OnUpdate(JobHandle inputDeps)
+//    {
+//        CheckForDeletion deletionJob = new CheckForDeletion
+//        {
+//            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
+//            currentPosition = new float3(mainCamera.transform.position.x, 0, mainCamera.transform.position.z),
+//            radius = MeshComponents.radius,
+//            archetype = archetype
+//        };
 
-        inputDeps = deletionJob.Schedule(this, inputDeps);
+//        inputDeps = deletionJob.Schedule(this, inputDeps);
 
-        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
+//        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
 
-        return inputDeps;
-    }
-}
+//        return inputDeps;
+//    }
+//}
 
 public class DeleteMegaChunk : JobComponentSystem
 {

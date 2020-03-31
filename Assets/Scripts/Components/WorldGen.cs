@@ -46,6 +46,8 @@ public struct BuildUltraChunkEvent : IComponentData
     public float3 positionToBuild;
 }
 
+public struct QueueRemoveUltraChunkFlag : IComponentData { };
+
 public struct RemoveUltraChunkEvent : IComponentData {
     public float3 group;
 };

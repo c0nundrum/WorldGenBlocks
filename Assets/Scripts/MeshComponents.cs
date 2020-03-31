@@ -92,7 +92,7 @@ public class MeshComponents : MonoBehaviour
         StartBuildMegaChunksJob();
         StartBuildUltraChunksJob();
         StartBuildQueue();        
-        StartDeleteUltraChunksJob();
+        //StartDeleteUltraChunksJob();
 
     }
 
@@ -223,19 +223,19 @@ public class MeshComponents : MonoBehaviour
         ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
     }
 
-    private void StartDeleteUltraChunksJob()
-    {
-        var world = World.DefaultGameObjectInjectionWorld;
-        var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
+    //private void StartDeleteUltraChunksJob()
+    //{
+    //    var world = World.DefaultGameObjectInjectionWorld;
+    //    var simulationSystemGroup = world.GetOrCreateSystem<SimulationSystemGroup>();
 
-        var countSystem = world.GetOrCreateSystem<DeleteUltraChunk>();
+    //    var countSystem = world.GetOrCreateSystem<DeleteUltraChunk>();
 
-        simulationSystemGroup.AddSystemToUpdateList(countSystem);
+    //    simulationSystemGroup.AddSystemToUpdateList(countSystem);
 
-        simulationSystemGroup.SortSystemUpdateList();
+    //    simulationSystemGroup.SortSystemUpdateList();
 
-        ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
-    }
+    //    ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);
+    //}
 
     private void BuildChunkAt(int x, int y, int z)
     {

@@ -52,6 +52,18 @@ public class QueueBuildEvent : ComponentSystem
 {
     private Entity currentChunkEntity;
     private EntityQuery m_Group;
+    private EntityArchetype archetype;
+
+    private float3 GetPosition(float3 position)
+    {
+        float outerRadius = 1f;
+        float innerRadius = outerRadius * 0.866025404f;
+
+        position.x *= 0.866025404f;
+        position.z *= (outerRadius * 0.75f);
+
+        return position;
+    }
 
     protected override void OnStartRunning()
     {
@@ -61,6 +73,7 @@ public class QueueBuildEvent : ComponentSystem
     protected override void OnCreate()
     {
         m_Group = GetEntityQuery(typeof(QueueManager));
+        archetype = EntityManager.CreateArchetype(typeof(RemoveUltraChunkEvent));
         base.OnCreate();
     }
 
@@ -84,13 +97,43 @@ public class QueueBuildEvent : ComponentSystem
                 for (int i = 0; i < drawnChunks.Length; i++)
                 {
                     ultraChunks[i] = EntityManager.GetComponentData<UltraChunk>(drawnChunks[i]).center;
+
+                    if (math.distancesq(ultraChunks[i], ultraChunk.center) > (MeshComponents.radius * MeshComponents.radius) * 20) //Start of the deleting pipeline
+                    {
+                        Entity entity = PostUpdateCommands.CreateEntity(archetype);
+                        PostUpdateCommands.SetComponent(entity, new RemoveUltraChunkEvent { group = ultraChunks[i] });
+                        PostUpdateCommands.DestroyEntity(drawnChunks[i]);
+                    }
+
                 }
 
 
-                float3 neighbourRight = ultraChunk.center + new float3((MeshComponents.radius * MeshComponents.chunkSize) / 2, 0, 0);
-                float3 neighbourLeft = ultraChunk.center - new float3((MeshComponents.radius * MeshComponents.chunkSize) / 2, 0, 0);
-                float3 neighbourForward = ultraChunk.center + new float3(0, 0, (MeshComponents.radius * MeshComponents.chunkSize) / 2);
-                float3 neighbourBack = ultraChunk.center - new float3(0, 0, (MeshComponents.radius * MeshComponents.chunkSize) / 2);
+                float3 neighbourRight = ultraChunk.center + GetPosition(new float3((MeshComponents.radius * MeshComponents.chunkSize) / 2, 0, 0));
+                float3 neighbourUpRight = ultraChunk.center + GetPosition(new float3((MeshComponents.radius * MeshComponents.chunkSize) / 2, 0, (MeshComponents.radius * MeshComponents.chunkSize) / 2));
+                float3 neighbourLeft = ultraChunk.center - GetPosition(new float3((MeshComponents.radius * MeshComponents.chunkSize) / 2, 0, 0));
+                float3 neighbourUpLeft = ultraChunk.center - GetPosition(new float3((MeshComponents.radius * MeshComponents.chunkSize) / 2, 0, - (MeshComponents.radius * MeshComponents.chunkSize) / 2));
+                float3 neighbourForward = ultraChunk.center + GetPosition(new float3(0, 0, (MeshComponents.radius * MeshComponents.chunkSize) / 2));
+                float3 neighbourBack = ultraChunk.center - GetPosition(new float3(0, 0, (MeshComponents.radius * MeshComponents.chunkSize) / 2));
+
+                if (!ultraChunks.Contains(neighbourUpLeft))
+                {
+                    Entity eventEntity = EntityManager.CreateEntity(typeof(BuildUltraChunkEvent));
+                    EntityManager.SetComponentData(eventEntity, new BuildUltraChunkEvent
+                    {
+                        eventEntity = eventEntity,
+                        positionToBuild = neighbourUpLeft
+                    });
+                }
+
+                if (!ultraChunks.Contains(neighbourUpRight))
+                {
+                    Entity eventEntity = EntityManager.CreateEntity(typeof(BuildUltraChunkEvent));
+                    EntityManager.SetComponentData(eventEntity, new BuildUltraChunkEvent
+                    {
+                        eventEntity = eventEntity,
+                        positionToBuild = neighbourUpRight
+                    });
+                }
 
                 if (!ultraChunks.Contains(neighbourRight))
                 {
