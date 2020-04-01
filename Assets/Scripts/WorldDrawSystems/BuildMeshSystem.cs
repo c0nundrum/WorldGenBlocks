@@ -37,6 +37,68 @@ public class BuildChunkMesh : ComponentSystem
 }
 
 [DisableAutoCreation]
+public class BuildMeshSystem_Legacy : JobComponentSystem
+{
+    private Entity prefabEntity;
+
+    private EntityQuery m_Query;
+
+    private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
+
+    [BurstCompile]
+    private struct BuildScene : IJobForEachWithEntity<CubePosition>
+    {
+        [ReadOnly]
+        public Entity prefabEntity;
+
+        public EntityCommandBuffer.Concurrent commandBuffer;
+
+        public void Execute(Entity entity, int index, ref CubePosition cube)
+        {
+            Entity hexTile = commandBuffer.Instantiate(index, prefabEntity);
+            commandBuffer.AddComponent(index, hexTile, new Parent { Value = cube.parent });
+            commandBuffer.SetComponent(index, hexTile, new Translation { Value = cube.position });
+            commandBuffer.SetComponent(index, hexTile, new Rotation { Value = quaternion.identity });
+            commandBuffer.AddComponent(index, hexTile, new LocalToParent { });
+
+            commandBuffer.DestroyEntity(index, entity);
+        }
+    }
+
+    protected override void OnCreate()
+    {
+        endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+        m_Query = EntityManager.CreateEntityQuery(typeof(PrefabEntityComponent));
+        base.OnCreate();
+    }
+
+    protected override void OnStartRunning()
+    {
+
+        base.OnStartRunning();
+    }
+
+    protected override JobHandle OnUpdate(JobHandle inputDeps)
+    {
+        var arrayEntity = m_Query.ToEntityArray(Allocator.TempJob);
+        prefabEntity = arrayEntity[0];
+        
+        BuildScene buildScene = new BuildScene
+        {
+            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent(),
+            prefabEntity = prefabEntity
+        };
+
+        arrayEntity.Dispose();
+
+        inputDeps = buildScene.Schedule(this, inputDeps);
+        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
+
+        return inputDeps;
+    }
+}
+
+[DisableAutoCreation]
 //[UpdateAfter(typeof(CreateMeshJobSystem))]
 public class BuildMeshSystem : ComponentSystem
 {
@@ -239,6 +301,8 @@ public class BuildMeshSystem : ComponentSystem
         base.OnCreate();
     }
 
+    private Entity prefabEntity;
+
     protected override void OnStartRunning()
     {
         SingleCube = new RenderMesh
@@ -247,6 +311,11 @@ public class BuildMeshSystem : ComponentSystem
             material = MeshComponents.textureAtlas
         };
         base.OnStartRunning();
+
+        Entities.ForEach((ref PrefabEntityComponent prefabEntityComponent) => {
+            prefabEntity = prefabEntityComponent.prefabEntity;
+        });
+
     }
 
     protected override void OnUpdate()
@@ -256,15 +325,17 @@ public class BuildMeshSystem : ComponentSystem
         {
             if (!cube.HasCube)
             {
-                EntityManager.SetComponentData(en, new Parent { Value = cube.parent });
-                EntityManager.SetComponentData(en, new Translation { Value = cube.position });
-                EntityManager.SetComponentData(en, new Rotation { Value = quaternion.identity });
-                EntityManager.SetComponentData(en, new LocalToParent { });
-                EntityManager.AddSharedComponentData(en, SingleCube);
-                EntityManager.SetComponentData(en, new RenderBounds { Value = OriginCube.bounds.ToAABB() });
+                Entity hexTile = EntityManager.Instantiate(prefabEntity);
+                EntityManager.AddComponentData(hexTile, new Parent { Value = cube.parent });
+                EntityManager.SetComponentData(hexTile, new Translation { Value = cube.position });
+                EntityManager.SetComponentData(hexTile, new Rotation { Value = quaternion.identity });
+                EntityManager.AddComponentData(hexTile, new LocalToParent { });
+                //EntityManager.AddSharedComponentData(en, SingleCube);
+                //EntityManager.SetComponentData(en, new RenderBounds { Value = OriginCube.bounds.ToAABB() });
 
+                PostUpdateCommands.DestroyEntity(en);
 
-                cube.HasCube = true;
+                //cube.HasCube = true;
             }
         });
     }

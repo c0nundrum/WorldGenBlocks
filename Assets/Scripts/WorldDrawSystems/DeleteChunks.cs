@@ -19,12 +19,25 @@ public class DeleteSystem : JobComponentSystem
     {
         [ReadOnly]
         [DeallocateOnJobCompletion]public NativeArray<DeleteEntityEvent> eventArray;
+        [ReadOnly]
+        public BufferFromEntity<Child> lookup;
 
         public EntityCommandBuffer.Concurrent commandBuffer;
 
         public void Execute(int index)
         {
-            commandBuffer.DestroyEntity(index, eventArray[index].entity);
+            if (lookup.Exists(eventArray[index].entity))
+            {
+                NativeArray<Entity> array = lookup[eventArray[index].entity].Reinterpret<Entity>().AsNativeArray();
+                for (int i = 0; i < array.Length; i++)
+                {
+                    commandBuffer.AddComponent(index, array[i], new DeleteEntityEvent { entity = array[i] });
+                }
+            }
+            else
+            {
+                commandBuffer.DestroyEntity(index, eventArray[index].entity);
+            }
         }
     }
 
@@ -55,12 +68,49 @@ public class DeleteSystem : JobComponentSystem
 
         ParallellDeleteQueue parallellDeleteQueue = new ParallellDeleteQueue
         {
+            lookup = GetBufferFromEntity<Child>(true),
             eventArray = eventArray,
             commandBuffer = beginPresentationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent()
         };
 
         inputDeps = parallellDeleteQueue.Schedule(eventArray.Length, 32, inputDeps);
         beginPresentationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
+
+        return inputDeps;
+    }
+}
+
+public class EmergencyRemove : JobComponentSystem
+{
+    private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
+
+    [BurstCompile]
+    private struct Remove : IJobForEachWithEntity<DeleteNowFlag>
+    {
+        public EntityCommandBuffer.Concurrent commandBuffer;
+
+        public void Execute(Entity entity, int index, [ReadOnly]ref DeleteNowFlag c0)
+        {
+            commandBuffer.DestroyEntity(index, entity);
+        }
+    }
+
+    protected override void OnCreate()
+    {
+        endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+
+        base.OnCreate();
+    }
+
+    protected override JobHandle OnUpdate(JobHandle inputDeps)
+    {
+        Remove removeJob = new Remove
+        {
+            commandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent()
+        };
+
+        inputDeps = removeJob.Schedule(this, inputDeps);
+        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(inputDeps);
 
         return inputDeps;
     }
@@ -202,19 +252,20 @@ public class DeleteMegaChunk : JobComponentSystem
         public EntityCommandBuffer.Concurrent commandBuffer;
 
         public void Execute(int index)
-        {           
-            if (lookup.Exists(megaChunks[index].entity))
-            {
-                NativeArray<Entity> array = lookup[megaChunks[index].entity].Reinterpret<Entity>().AsNativeArray();
-                for (int i = 0; i < array.Length; i++)
-                {
-                    commandBuffer.AddComponent(index, array[i], new DeleteEntityEvent { entity = array[i] });
-                }
-            }
-            else
-            {
-                commandBuffer.AddComponent(index, megaChunks[index].entity, new DeleteEntityEvent { entity = megaChunks[index].entity });
-            }         
+        {   
+            //if (lookup.Exists(megaChunks[index].entity))
+            //{
+            //    NativeArray<Entity> array = lookup[megaChunks[index].entity].Reinterpret<Entity>().AsNativeArray();
+            //    for (int i = 0; i < array.Length; i++)
+            //    {
+            //        commandBuffer.AddComponent(index, array[i], new DeleteEntityEvent { entity = array[i] });
+            //    }
+            //}
+            //else
+            //{
+            //    commandBuffer.AddComponent(index, megaChunks[index].entity, new DeleteNowFlag { });
+            //}
+            commandBuffer.AddComponent(index, megaChunks[index].entity, new DeleteEntityEvent { entity = megaChunks[index].entity });
         }
     }
 

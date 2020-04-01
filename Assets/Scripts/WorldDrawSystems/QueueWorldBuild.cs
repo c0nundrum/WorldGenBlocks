@@ -107,33 +107,10 @@ public class QueueBuildEvent : ComponentSystem
 
                 }
 
-
                 float3 neighbourRight = ultraChunk.center + GetPosition(new float3((MeshComponents.radius * MeshComponents.chunkSize) / 2, 0, 0));
-                float3 neighbourUpRight = ultraChunk.center + GetPosition(new float3((MeshComponents.radius * MeshComponents.chunkSize) / 2, 0, (MeshComponents.radius * MeshComponents.chunkSize) / 2));
                 float3 neighbourLeft = ultraChunk.center - GetPosition(new float3((MeshComponents.radius * MeshComponents.chunkSize) / 2, 0, 0));
-                float3 neighbourUpLeft = ultraChunk.center - GetPosition(new float3((MeshComponents.radius * MeshComponents.chunkSize) / 2, 0, - (MeshComponents.radius * MeshComponents.chunkSize) / 2));
                 float3 neighbourForward = ultraChunk.center + GetPosition(new float3(0, 0, (MeshComponents.radius * MeshComponents.chunkSize) / 2));
                 float3 neighbourBack = ultraChunk.center - GetPosition(new float3(0, 0, (MeshComponents.radius * MeshComponents.chunkSize) / 2));
-
-                if (!ultraChunks.Contains(neighbourUpLeft))
-                {
-                    Entity eventEntity = EntityManager.CreateEntity(typeof(BuildUltraChunkEvent));
-                    EntityManager.SetComponentData(eventEntity, new BuildUltraChunkEvent
-                    {
-                        eventEntity = eventEntity,
-                        positionToBuild = neighbourUpLeft
-                    });
-                }
-
-                if (!ultraChunks.Contains(neighbourUpRight))
-                {
-                    Entity eventEntity = EntityManager.CreateEntity(typeof(BuildUltraChunkEvent));
-                    EntityManager.SetComponentData(eventEntity, new BuildUltraChunkEvent
-                    {
-                        eventEntity = eventEntity,
-                        positionToBuild = neighbourUpRight
-                    });
-                }
 
                 if (!ultraChunks.Contains(neighbourRight))
                 {

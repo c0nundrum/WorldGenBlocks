@@ -17,9 +17,10 @@ public class MeshComponents : MonoBehaviour
     public Mesh tileMeshComp;
     public static MeshComponents instance;
     public static int columnHeight = 8;
-    public readonly static int chunkSize = 8;
+    public readonly static int radius = 40;
+    public readonly static int chunkSize = radius / 4;
     public static int worldSize = 2;
-    public readonly static int radius = 32;
+
     public static Mesh tileMesh;
     //public static List<string> toRemove = new List<string>();
     public Material material;
@@ -88,11 +89,11 @@ public class MeshComponents : MonoBehaviour
         //StartCoroutine(DrawChunks());
 
         //Build Bigger World
+
         StartBuildMesh();
         StartBuildMegaChunksJob();
         StartBuildUltraChunksJob();
-        StartBuildQueue();        
-        //StartDeleteUltraChunksJob();
+        StartBuildQueue();
 
     }
 
